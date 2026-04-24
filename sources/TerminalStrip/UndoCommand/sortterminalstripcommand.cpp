@@ -44,48 +44,60 @@ void SortTerminalStripCommand::redo()
 	}
 }
 
+/**
+ * @brief terminalIndex
+ * Extract a sortable integer from a terminal label.
+ * Handles two common formats:
+ *   "-XD0:1"  → looks for number after ':'  → 1
+ *   "1"       → leading digits               → 1
+ * Returns -1 if no number is found.
+ */
+static int terminalIndex(const QString &label)
+{
+	// First try: number after colon, e.g. "-XD0:1" or "XD0:10"
+	static const QRegularExpression afterColon(QStringLiteral(":(\\d+)"));
+	auto m = afterColon.match(label);
+	if (m.hasMatch()) {
+		return m.captured(1).toInt();
+	}
+
+	// Fallback: leading digits, e.g. plain "1", "10"
+	static const QRegularExpression leading(QStringLiteral("^(\\d+)"));
+	m = leading.match(label);
+	if (m.hasMatch()) {
+		return m.captured(1).toInt();
+	}
+
+	return -1;
+}
+
 void SortTerminalStripCommand::sort()
 {
 	std::sort(m_new_order.begin(), m_new_order.end(), [](QSharedPointer<PhysicalTerminal> arg1, QSharedPointer<PhysicalTerminal> arg2)
 	{
-		const QRegularExpression rx(QStringLiteral("^\\d+"));
-
 		QString str1;
 		QString str2;
-		int int1 =-1;
-		int int2 =-1;
+		int int1 = -1;
+		int int2 = -1;
 
 		if (arg1->realTerminalCount())
 		{
 			str1 = arg1->realTerminals().constLast()->label();
-
-			auto match = rx.match(str1);
-			if (match.hasMatch()) {
-				int1 = match.captured(0).toInt();
-			}
+			int1 = terminalIndex(str1);
 		}
 
 		if (arg2->realTerminalCount())
 		{
 			str2 = arg2->realTerminals().constLast()->label();
-
-			auto match = rx.match(str2);
-			if (match.hasMatch()) {
-				int2 = match.captured(0).toInt();
-			}
+			int2 = terminalIndex(str2);
 		}
 
-			//Sort as numbers if both string
-			//start at least by a digit and
-			//the number of each string are different.
-			//Else sort as string
-		if (int1 >= 0 &&
-			int2 >= 0 &&
-			int1 != int2) {
-			return int1<int2;
-		}
-		else {
-			return str1<str2;
+			//Sort numerically if both labels have a number and they differ.
+			//Otherwise fall back to string comparison.
+		if (int1 >= 0 && int2 >= 0 && int1 != int2) {
+			return int1 < int2;
+		} else {
+			return str1 < str2;
 		}
 	});
 }

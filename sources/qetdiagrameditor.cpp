@@ -47,6 +47,12 @@
 #include "TerminalStrip/ui/addterminalstripitemdialog.h"
 #include "wiringlistexport.h"
 #include "ui/terminalnumberingdialog.h"
+#include "TerminalStrip/klemmplanexporter.h"
+#include "TerminalStrip/terminalstrip.h"
+#include <QFileDialog>
+#include <QDesktopServices>
+#include <QInputDialog>
+#include <QTextStream>
 
 #ifdef BUILD_WITHOUT_KF5
 #else
@@ -1459,11 +1465,7 @@ void QETDiagramEditor::addItemGroupTriggered(QAction *action)
 	}
 	else if (value == QLatin1String("terminal_strip"))
 	{
-		const auto diagram_view{currentDiagramView()};
-		if (diagram_view)
-		{
-			AddTerminalStripItemDialog::openDialog(diagram_view->diagram(), this);
-		}
+		generateKlemmplan();
 	}
 
 	if (diagram_event)
@@ -2397,6 +2399,59 @@ void QETDiagramEditor::selectionChanged()
 		m_selection_properties_editor->setDiagram(dv->diagram());
 }
 
+
+/**
+ * @brief QETDiagramEditor::generateKlemmplan
+ * Lets the user pick a terminal strip, builds its Klemmplan element,
+ * registers it in the project's embedded collection, and places it
+ * on the currently active diagram page.
+ */
+void QETDiagramEditor::generateKlemmplan()
+{
+	QETProject *project = currentProject();
+	if (!project) return;
+
+	DiagramView *dv = currentDiagramView();
+	if (!dv || !dv->diagram()) {
+		QMessageBox::information(this, tr("Klemmplan"),
+			tr("Bitte eine Seite öffnen, auf der das Element eingefügt werden soll."));
+		return;
+	}
+
+	const auto strips = project->terminalStrip();
+	if (strips.isEmpty()) {
+		QMessageBox::information(this, tr("Klemmplan"),
+			tr("Kein Klemmstreifen im Projekt vorhanden."));
+		return;
+	}
+
+	// Build display list: "-XD0", "-XD1", ...
+	QStringList names;
+	for (const TerminalStrip *s : strips)
+		names << (s->name().startsWith(QLatin1Char('-'))
+		           ? s->name()
+		           : QStringLiteral("-") + s->name());
+
+	bool ok = false;
+	const QString chosen = QInputDialog::getItem(
+		this,
+		tr("Klemmplan einfügen"),
+		tr("Klemmstreifen auswählen:"),
+		names, 0, false, &ok);
+	if (!ok || chosen.isEmpty()) return;
+
+	// Find the matching strip
+	const TerminalStrip *selectedStrip = nullptr;
+	for (const TerminalStrip *s : strips) {
+		const QString dname = s->name().startsWith(QLatin1Char('-'))
+		                       ? s->name()
+		                       : QStringLiteral("-") + s->name();
+		if (dname == chosen) { selectedStrip = s; break; }
+	}
+	if (!selectedStrip) return;
+
+	KlemmplanExporter::insertIntoProject(project, dv->diagram(), selectedStrip);
+}
 
 /**
 	@brief QETDiagramEditor::generateTerminalBlock

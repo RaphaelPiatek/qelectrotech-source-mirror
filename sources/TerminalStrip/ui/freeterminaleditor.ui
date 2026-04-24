@@ -34,7 +34,17 @@
      </property>
     </widget>
    </item>
-   <item row="5" column="2">
+   <item row="5" column="1" colspan="3">
+    <widget class="QPushButton" name="m_auto_assign_pb">
+     <property name="toolTip">
+      <string>Automatically assign free terminals to strips based on their label (e.g. -XD0:1 → strip XD0). Creates missing strips automatically.</string>
+     </property>
+     <property name="text">
+      <string>Auto-assign to strips</string>
+     </property>
+    </widget>
+   </item>
+   <item row="6" column="2">
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>

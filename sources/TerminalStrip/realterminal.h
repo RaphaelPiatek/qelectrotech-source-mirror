@@ -20,6 +20,7 @@
 
 #include <QSharedPointer>
 #include <QDomElement>
+#include <QList>
 #include "../properties/elementdata.h"
 
 class TerminalStrip;
@@ -44,6 +45,26 @@ class RealTerminal
 		friend class TerminalElement;
 		friend class PhysicalTerminal;
 
+	public:
+		/**
+		 * @brief The ConnectionData struct
+		 * Holds the data for one conductor connection on a terminal element.
+		 * Each terminal element has one or more connection points (labeled
+		 * "a", "b", "c", etc.). This struct captures the cable/wire data
+		 * and the target element info for one such connection point.
+		 */
+		struct ConnectionData {
+			QString terminal_letter; ///< Connection point name on this element: "a", "b", "c", ...
+			QString cable;           ///< Cable identifier (m_cable from ConductorProperties)
+			QString wire_color;      ///< Wire color identifier (m_wire_color)
+			QString wire_section;    ///< Wire cross-section (m_wire_section)
+			QString target_bmk;      ///< Label of the target element (BMK / Betriebsmittelkennzeichen)
+			QString target_pin;      ///< Terminal name on the target element (connection point)
+			QString target_xref;     ///< Folio reference (Xref) of the resolved target element
+			QString target_plant;    ///< Plant (=) of the resolved target element
+			QString target_location; ///< Location (+) of the resolved target element
+		};
+
 	private:
 		RealTerminal(Element *element);
 
@@ -65,7 +86,19 @@ class RealTerminal
 		QString Xref() const;
 		QString cable() const;
 		QString cableWire() const;
+		QString wireSection() const;
+		/// Returns the pair indices (0=a/b, 1=c/d, 2=e/f) that have at least
+		/// one conductor connected.  Always contains at least [0].
+		/// Use this instead of connectionPairCount() to avoid off-by-one
+		/// errors when an element only uses e.g. pair 1 (c-side only).
+		QList<int> activePairIndices() const;
+		QString ziel1ForPair(int pair) const;
+		QString ziel2ForPair(int pair) const;
 		QString conductor() const;
+
+		/// Returns one ConnectionData entry per conductor connection on this element,
+		/// sorted by terminal letter ("a" first, then "b", "c", …).
+		QList<ConnectionData> connections() const;
 
 		ElementData::TerminalType type() const;
 		ElementData::TerminalFunction function() const;

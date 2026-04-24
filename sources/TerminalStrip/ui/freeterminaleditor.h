@@ -47,6 +47,7 @@ class FreeTerminalEditor : public QWidget
 		void on_m_function_cb_activated(int index);
 		void on_m_led_cb_activated(int index);
 		void on_m_move_pb_clicked();
+		void on_m_auto_assign_pb_clicked();
 
 	private:
 		void selectionChanged();

@@ -30,6 +30,10 @@
 #include "../UndoCommand/bridgeterminalscommand.h"
 #include "../UndoCommand/changeterminalstripcolor.h"
 #include "../physicalterminal.h"
+#include "../../qetgraphicsitem/terminal.h"
+#include "../../qetgraphicsitem/conductor.h"
+#include "../../QPropertyUndoCommand/qpropertyundocommand.h"
+#include "../../qetinformation.h"
 #include "../terminalstripbridge.h"
 
 /**
@@ -198,11 +202,33 @@ void TerminalStripEditor::apply()
 					current_data.setTerminalFunction(data_.function_);
 					current_data.setTerminalLED(data_.led_);
 					current_data.m_informations.addValue(QStringLiteral("label"), data_.label_);
+					current_data.m_informations.addValue(QETInformation::ELMT_MANUFACTURER,     data_.manufacturer_);
+					current_data.m_informations.addValue(QETInformation::ELMT_MANUFACTURER_REF, data_.article_number_);
 
 					if (element->elementData() != current_data)
 						m_project->undoStack()->push(new ChangeElementDataCommand(element, current_data));
 					if (data_.level_ != data_.real_terminal.toStrongRef()->level())
 						m_project->undoStack()->push(new ChangeTerminalLevel(m_current_strip, data_.real_terminal, data_.level_));
+
+					// Update conductor properties (cable, wire color, wire section) for this pair
+					static const QString LEFT_LETTERS[]  = {"a", "c", "e"};
+					static const QString RIGHT_LETTERS[] = {"b", "d", "f"};
+					const int pi = data_.connection_pair_index_;
+					for (Terminal *t : element->terminals()) {
+						const QString tname = t->name().toLower();
+						if (tname != LEFT_LETTERS[pi] && tname != RIGHT_LETTERS[pi]) continue;
+						for (Conductor *c : t->conductors()) {
+							QVariant old_val, new_val;
+							old_val.setValue(c->properties());
+							ConductorProperties np = c->properties();
+							np.m_cable        = data_.cable_;
+							np.m_wire_color   = data_.cable_wire;
+							np.m_wire_section = data_.wire_section_;
+							new_val.setValue(np);
+							if (old_val != new_val)
+								m_project->undoStack()->push(new QPropertyUndoCommand(c, "properties", old_val, new_val));
+						}
+					}
 				}
 			}
 		}
@@ -231,23 +257,30 @@ void TerminalStripEditor::clear()
 
 /**
  * @brief TerminalStripEditor::spanMultiLevelTerminals
- * Span row of m_table_widget for multi-level terminal
+ * Span the Position column (col 0) of m_table_widget for every
+ * PhysicalTerminal that occupies more than one model row.  A physical
+ * terminal can have multiple rows either because it is a multi-level
+ * (stacked) terminal or because it is a multi-pair terminal whose
+ * element has conductor connections on more than one pair (a-b / c-d /
+ * e-f).  The model already knows the exact row count per physical
+ * terminal via rowCountForPhysicalIndex(), so we use that instead of
+ * the raw realTerminalCount() from the strip object.
  */
 void TerminalStripEditor::spanMultiLevelTerminals()
 {
-	if (!m_current_strip) {
+	if (!m_model || !m_current_strip) {
 		return;
 	}
 
 	ui->m_table_widget->clearSpans();
 	auto current_row = 0;
-	for (auto i = 0 ; i < m_current_strip->physicalTerminalCount() ; ++i)
+	for (auto i = 0 ; i < m_model->physicalCount() ; ++i)
 	{
-		const auto level_count = m_current_strip->physicalTerminal(i)->realTerminalCount();
-		if (level_count > 1) {
-			ui->m_table_widget->setSpan(current_row, 0, level_count, 1);
+		const auto row_count = m_model->rowCountForPhysicalIndex(i);
+		if (row_count > 1) {
+			ui->m_table_widget->setSpan(current_row, 0, row_count, 1);
 		}
-		current_row += level_count;
+		current_row += row_count;
 	}
 }
 

@@ -23,7 +23,13 @@
 #include "../../elementprovider.h"
 #include "freeterminalmodel.h"
 #include "../terminalstrip.h"
+#include "../terminalstripdata.h"
 #include "../UndoCommand/addterminaltostripcommand.h"
+#include "../UndoCommand/addterminalstripcommand.h"
+#include "../realterminal.h"
+
+#include <QRegularExpression>
+#include <QMap>
 
 /**
  * @brief FreeTerminalEditor::FreeTerminalEditor
@@ -278,5 +284,94 @@ void FreeTerminalEditor::setDisabledMove(bool b)
 	ui->m_move_label->setDisabled(b);
 	ui->m_move_in_cb->setDisabled(b);
 	ui->m_move_pb->setDisabled(b);
+}
+
+/**
+ * @brief FreeTerminalEditor::on_m_auto_assign_pb_clicked
+ *
+ * Parses each free terminal's label to extract the strip name and terminal
+ * index, then assigns all matching terminals to the corresponding
+ * TerminalStrip.  Terminals with the same label (e.g. two elements both
+ * labelled "-XD0:1") are grouped into one PhysicalTerminal so that
+ * multi-pole terminals composed of several element symbols are handled
+ * correctly.  Missing strips are created automatically.
+ *
+ * Label convention (same as Python qet_klemmplan.py):
+ *   -XD0:1      → strip "XD0", index "1"
+ *   -XD0:1.a-b  → strip "XD0", index "1"  (letter suffix ignored)
+ *   XD0:3       → strip "XD0", index "3"   (leading "-" optional)
+ */
+void FreeTerminalEditor::on_m_auto_assign_pb_clicked()
+{
+	if (!m_project) return;
+
+	const int rows = m_model->rowCount(QModelIndex());
+	if (rows == 0) return;
+
+	// Regex: group 1 = strip name (e.g. "XD0"), group 2 = terminal index (e.g. "1")
+	static const QRegularExpression labelRx(
+		QStringLiteral("^-?([A-Za-z]+\\d*):([^.]+)(?:\\.[A-Za-z-]+)?$"));
+
+	// Two-level map: strip name → terminal index (numeric) → RealTerminals
+	// Terminals sharing the same strip name AND same index belong to one PhysicalTerminal.
+	// Using int as the inner key ensures natural numeric ordering (1, 2, 10)
+	// instead of lexicographic ordering (1, 10, 2).
+	QMap<QString, QMap<int, QVector<QSharedPointer<RealTerminal>>>> byStripAndIndex;
+
+	for (int row = 0; row < rows; ++row) {
+		const auto mrtd = m_model->dataAtRow(row);
+		const QString label = mrtd.label_.trimmed();
+		if (label.isEmpty()) continue;
+
+		auto match = labelRx.match(label);
+		if (!match.hasMatch()) continue;
+
+		const QString stripName = match.captured(1); // e.g. "XD0"
+		const int termIndex = match.captured(2).toInt(); // e.g. 1, 2, 10 — sorted numerically
+		const auto rt = mrtd.real_terminal.toStrongRef();
+		if (!rt) continue;
+
+		byStripAndIndex[stripName][termIndex].append(rt);
+	}
+
+	if (byStripAndIndex.isEmpty()) return;
+
+	m_project->undoStack()->beginMacro(tr("Auto-assign terminals to strips"));
+
+	for (auto stripIt = byStripAndIndex.constBegin(); stripIt != byStripAndIndex.constEnd(); ++stripIt) {
+		const QString                            &stripName = stripIt.key();
+		const QMap<int, QVector<QSharedPointer<RealTerminal>>> &byIndex = stripIt.value();
+
+		// Find existing strip with matching name (case-insensitive)
+		TerminalStrip *strip = nullptr;
+		for (auto *s : m_project->terminalStrip()) {
+			if (s->name().compare(stripName, Qt::CaseInsensitive) == 0) {
+				strip = s;
+				break;
+			}
+		}
+
+		// Create strip if not found
+		if (!strip) {
+			strip = new TerminalStrip(QStringLiteral("="),
+									  QStringLiteral("+"),
+									  stripName,
+									  m_project);
+			m_project->undoStack()->push(new AddTerminalStripCommand(strip, m_project));
+		}
+
+		// Build the 2-D vector expected by addAndGroupTerminals:
+		// each inner vector = one PhysicalTerminal (all elements with the same index)
+		QVector<QVector<QSharedPointer<RealTerminal>>> grouped;
+		for (auto idxIt = byIndex.constBegin(); idxIt != byIndex.constEnd(); ++idxIt) {
+			grouped.append(idxIt.value());
+		}
+
+		m_project->undoStack()->push(new AddTerminalToStripCommand(grouped, strip));
+	}
+
+	m_project->undoStack()->endMacro();
+
+	reload();
 }
 

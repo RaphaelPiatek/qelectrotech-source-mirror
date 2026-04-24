@@ -123,6 +123,7 @@ class QETDiagramEditor : public QETMainWindow
 		void slot_updateWindowsMenu();
 		void slot_updateAutoNumDock();
 		void generateTerminalBlock();
+		void generateKlemmplan();
 		void setWindowedMode();
 		void setTabbedMode();
 		void readSettings();

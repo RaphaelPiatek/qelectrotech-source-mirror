@@ -61,6 +61,34 @@ AddTerminalToStripCommand::AddTerminalToStripCommand(QVector<QSharedPointer<Real
 }
 
 
+/**
+ * @brief AddTerminalToStripCommand::AddTerminalToStripCommand
+ * Grouped variant: each inner vector in \p grouped_terminals becomes one
+ * PhysicalTerminal (multi-level terminal), e.g. for terminals composed of
+ * multiple element symbols with the same label.
+ * @param grouped_terminals  2-D vector: outer = physical terminals, inner = real terminals per physical terminal
+ * @param strip              target strip
+ * @param parent             parent undo command
+ */
+AddTerminalToStripCommand::AddTerminalToStripCommand(QVector<QVector<QSharedPointer<RealTerminal>>> grouped_terminals,
+													  TerminalStrip *strip,
+													  QUndoCommand *parent) :
+	QUndoCommand{parent},
+	m_grouped_terminal{grouped_terminals},
+	m_use_grouping{true},
+	m_new_strip{strip}
+{
+	const auto ts_name = strip->name();
+	int count = 0;
+	for (const auto &group : grouped_terminals) count += group.size();
+
+	const auto str_1 = count > 1 ? QObject::tr("Ajouter %1 bornes").arg(count) :
+								   QObject::tr("Ajouter une borne");
+	const auto str_2 = ts_name.isEmpty() ? QObject::tr("à un groupe de bornes") :
+										   QObject::tr("au groupe de bornes %1").arg(ts_name);
+	setText(str_1 % " " % str_2);
+}
+
 AddTerminalToStripCommand::~AddTerminalToStripCommand()
 {}
 
@@ -71,7 +99,13 @@ AddTerminalToStripCommand::~AddTerminalToStripCommand()
 void AddTerminalToStripCommand::undo()
 {
 	if (m_new_strip) {
-		m_new_strip->removeTerminals(m_terminal);
+		if (m_use_grouping) {
+			QVector<QSharedPointer<RealTerminal>> flat;
+			for (const auto &group : m_grouped_terminal) flat.append(group);
+			m_new_strip->removeTerminals(flat);
+		} else {
+			m_new_strip->removeTerminals(m_terminal);
+		}
 	}
 }
 
@@ -82,7 +116,10 @@ void AddTerminalToStripCommand::undo()
 void AddTerminalToStripCommand::redo()
 {
 	if (m_new_strip) {
-		m_new_strip->addTerminals(m_terminal);
+		if (m_use_grouping)
+			m_new_strip->addAndGroupTerminals(m_grouped_terminal);
+		else
+			m_new_strip->addTerminals(m_terminal);
 	}
 }
 

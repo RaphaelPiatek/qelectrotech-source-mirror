@@ -39,6 +39,8 @@ class AddTerminalToStripCommand : public QUndoCommand
 	public:
 		AddTerminalToStripCommand(QSharedPointer<RealTerminal> terminal, TerminalStrip *strip, QUndoCommand *parent = nullptr);
 		AddTerminalToStripCommand(QVector<QSharedPointer<RealTerminal>> terminals, TerminalStrip *strip, QUndoCommand *parent = nullptr);
+		/// Grouped variant: each inner vector becomes one PhysicalTerminal.
+		AddTerminalToStripCommand(QVector<QVector<QSharedPointer<RealTerminal>>> grouped_terminals, TerminalStrip *strip, QUndoCommand *parent = nullptr);
 		~AddTerminalToStripCommand() override;
 
 		void undo() override;
@@ -46,6 +48,8 @@ class AddTerminalToStripCommand : public QUndoCommand
 
 	private:
 		QVector<QSharedPointer<RealTerminal>> m_terminal;
+		QVector<QVector<QSharedPointer<RealTerminal>>> m_grouped_terminal;
+		bool m_use_grouping = false;
 		QPointer<TerminalStrip> m_new_strip;
 };
 

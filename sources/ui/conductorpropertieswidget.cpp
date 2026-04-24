@@ -242,12 +242,6 @@ void ConductorPropertiesWidget::initWidget()
 	connect(ui->m_formula_le, &QLineEdit::textChanged, [this](QString text) {this->ui->m_text_le->setEnabled(text.isEmpty());});
 	ui->m_multiwires_gb->setChecked(true);
 	ui->m_singlewire_gb->setChecked(true);
-#if TODO_LIST
-#pragma message("@TODO Add Kabel and Bus to qet")
-#else
-	ui->m_cable_le->setDisabled(true);
-	ui->m_bus_le->setDisabled(true);
-#endif
 }
 
 /**

@@ -58,9 +58,14 @@ class TerminalStripModel : public QAbstractTableModel
 			XRef = 8,
 			Cable = 9,
 			CableWire = 10,
-			Type = 11,
-			Function = 12,
-			Led = 13,
+			WireSection = 11,
+			Ziel1 = 12,
+			Ziel2 = 13,
+			Type = 14,
+			Function = 15,
+			Led = 16,
+			Manufacturer = 17,
+			Article = 18,
 			Invalid = 99
 		};
 
@@ -85,6 +90,16 @@ class TerminalStripModel : public QAbstractTableModel
 		modelRealTerminalData modelRealTerminalDataForIndex(const QModelIndex &index) const;
 
 		void buildBridgePixmap(const QSize &pixmap_size);
+
+		/// Returns the number of PhysicalTerminals in the model.
+		int physicalCount() const { return m_physical_data.size(); }
+		/// Returns the number of model rows contributed by physical terminal at
+		/// \p physical_index (includes one row per active conductor pair per
+		/// real terminal, so it can exceed realTerminalCount()).
+		int rowCountForPhysicalIndex(int physical_index) const {
+			if (physical_index < 0 || physical_index >= m_physical_data.size()) return 0;
+			return m_physical_data.at(physical_index).real_data.size();
+		}
 
 		void reload();
 

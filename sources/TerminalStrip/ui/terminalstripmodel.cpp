@@ -43,13 +43,18 @@ const int CONDUCTOR_CELL = 7;
 const int XREF_CELL = 8;
 const int CABLE_CELL = 9;
 const int CABLE_WIRE_CELL = 10;
-const int TYPE_CELL = 11;
-const int FUNCTION_CELL = 12;
-const int LED_CELL = 13;
+const int WIRE_SECTION_CELL = 11;
+const int ZIEL1_CELL = 12;
+const int ZIEL2_CELL = 13;
+const int TYPE_CELL = 14;
+const int FUNCTION_CELL = 15;
+const int LED_CELL = 16;
+const int MANUFACTURER_CELL = 17;
+const int ARTICLE_CELL = 18;
 
-const int COLUMN_COUNT = 14;
+const int COLUMN_COUNT = 19;
 
-static QVector<bool> UNMODIFIED_CELL_VECTOR{false, false, false, false, false, false, false, false, false, false, false, false, false, false};
+static QVector<bool> UNMODIFIED_CELL_VECTOR{false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false};
 
 /**
  * @brief TerminalStripModel::levelForColumn
@@ -79,21 +84,26 @@ TerminalStripModel::Column TerminalStripModel::columnTypeForIndex(const QModelIn
 	if (index.isValid())
 	{
 		switch (index.column()) {
-			case 0: return Pos;
-			case 1: return Level;
-			case 2 : return Level0;
-			case 3 : return Level1;
-			case 4 : return Level2;
-			case 5 : return Level3;
-			case 6 : return Label;
-			case 7 : return Conductor;
-			case 8 : return XRef;
-			case 9 : return Cable;
-			case 10 : return CableWire;
-			case 11 : return Type;
-			case 12 : return Function;
-			case 13 : return Led;
-			default : return Invalid;
+			case 0:  return Pos;
+			case 1:  return Level;
+			case 2:  return Level0;
+			case 3:  return Level1;
+			case 4:  return Level2;
+			case 5:  return Level3;
+			case 6:  return Label;
+			case 7:  return Conductor;
+			case 8:  return XRef;
+			case 9:  return Cable;
+			case 10: return CableWire;
+			case 11: return WireSection;
+			case 12: return Ziel1;
+			case 13: return Ziel2;
+			case 14: return Type;
+			case 15: return Function;
+			case 16: return Led;
+			case 17: return Manufacturer;
+			case 18: return Article;
+			default: return Invalid;
 		}
 	}
 	return Invalid;
@@ -161,24 +171,33 @@ QVariant TerminalStripModel::data(const QModelIndex &index, int role) const
 	if (role == Qt::DisplayRole)
 	{
 		switch (index.column()) {
-			case POS_CELL :        return physicalDataAtIndex(index.row()).pos_;
-			case LEVEL_CELL :      return mrtd.level_;
-			case LABEL_CELL :      return mrtd.label_;
-			case CONDUCTOR_CELL :  return mrtd.conductor_;
-			case XREF_CELL :       return mrtd.Xref_;
-			case CABLE_CELL :      return mrtd.cable_;
-			case CABLE_WIRE_CELL : return mrtd.cable_wire;
-			case TYPE_CELL :       return ElementData::translatedTerminalType(mrtd.type_);
-			case FUNCTION_CELL :   return ElementData::translatedTerminalFunction(mrtd.function_);
-			default :              return QVariant();
+			case POS_CELL :          return physicalDataAtIndex(index.row()).pos_;
+			case LEVEL_CELL :        return mrtd.level_;
+			case LABEL_CELL :        return mrtd.label_;
+			case CONDUCTOR_CELL :    return mrtd.conductor_;
+			case XREF_CELL :         return mrtd.Xref_;
+			case CABLE_CELL :        return mrtd.cable_.isEmpty()       ? QVariant() : mrtd.cable_;
+			case CABLE_WIRE_CELL :   return mrtd.cable_wire.isEmpty()   ? QVariant() : mrtd.cable_wire;
+			case WIRE_SECTION_CELL : return mrtd.wire_section_.isEmpty() ? QVariant() : mrtd.wire_section_;
+			case ZIEL1_CELL :        return mrtd.ziel1_;
+			case ZIEL2_CELL :        return mrtd.ziel2_;
+			case TYPE_CELL :         return ElementData::translatedTerminalType(mrtd.type_);
+			case FUNCTION_CELL :     return ElementData::translatedTerminalFunction(mrtd.function_);
+			case MANUFACTURER_CELL : return mrtd.manufacturer_;
+			case ARTICLE_CELL :      return mrtd.article_number_;
+			default :                return QVariant();
 		}
 	}
 	else if (role == Qt::EditRole)
 	{
 		switch (index.column()) {
-			case LABEL_CELL : return mrtd.label_;
-			default: return QVariant();
-
+			case LABEL_CELL :        return mrtd.label_;
+			case CABLE_CELL :        return mrtd.cable_;
+			case CABLE_WIRE_CELL :   return mrtd.cable_wire;
+			case WIRE_SECTION_CELL : return mrtd.wire_section_;
+			case MANUFACTURER_CELL : return mrtd.manufacturer_;
+			case ARTICLE_CELL :      return mrtd.article_number_;
+			default:                 return QVariant();
 		}
 	}
 	else if (role == Qt::CheckStateRole &&
@@ -248,6 +267,36 @@ bool TerminalStripModel::setData(const QModelIndex &index, const QVariant &value
 		modified_ = true;
 		modified_cell = LABEL_CELL;
 	}
+	else if (column_ == CABLE_CELL && role == Qt::EditRole && mrtd.cable_ != value.toString())
+	{
+		mrtd.cable_ = value.toString();
+		modified_ = true;
+		modified_cell = CABLE_CELL;
+	}
+	else if (column_ == CABLE_WIRE_CELL && role == Qt::EditRole && mrtd.cable_wire != value.toString())
+	{
+		mrtd.cable_wire = value.toString();
+		modified_ = true;
+		modified_cell = CABLE_WIRE_CELL;
+	}
+	else if (column_ == WIRE_SECTION_CELL && role == Qt::EditRole && mrtd.wire_section_ != value.toString())
+	{
+		mrtd.wire_section_ = value.toString();
+		modified_ = true;
+		modified_cell = WIRE_SECTION_CELL;
+	}
+	else if (column_ == MANUFACTURER_CELL && role == Qt::EditRole && mrtd.manufacturer_ != value.toString())
+	{
+		mrtd.manufacturer_ = value.toString();
+		modified_ = true;
+		modified_cell = MANUFACTURER_CELL;
+	}
+	else if (column_ == ARTICLE_CELL && role == Qt::EditRole && mrtd.article_number_ != value.toString())
+	{
+		mrtd.article_number_ = value.toString();
+		modified_ = true;
+		modified_cell = ARTICLE_CELL;
+	}
 
 		//Set the modification to the terminal data
 	if (modified_)
@@ -280,21 +329,26 @@ QVariant TerminalStripModel::headerData(int section, Qt::Orientation orientation
 		if (orientation == Qt::Horizontal)
 		{
 			switch (section) {
-				case POS_CELL:        return tr("Position");
-				case LEVEL_CELL:      return tr("Étage");
-				case LEVEL_0_CELL:    return QStringLiteral("0");
-				case LEVEL_1_CELL:    return QStringLiteral("1");
-				case LEVEL_2_CELL:    return QStringLiteral("2");
-				case LEVEL_3_CELL:    return QStringLiteral("3");
-				case LABEL_CELL:      return tr("Label");
-				case CONDUCTOR_CELL:  return tr("Numéro de conducteur");
-				case XREF_CELL:       return tr("Référence croisé");
-				case CABLE_CELL:      return tr("Câble");
-				case CABLE_WIRE_CELL: return tr("Couleur / numéro de fil câble");
-				case TYPE_CELL:       return tr("Type");
-				case FUNCTION_CELL :  return tr("Fonction");
-				case LED_CELL:        return tr("led");
-				default : return QVariant();
+				case POS_CELL:          return tr("Position");
+				case LEVEL_CELL:        return tr("Étage");
+				case LEVEL_0_CELL:      return QStringLiteral("0");
+				case LEVEL_1_CELL:      return QStringLiteral("1");
+				case LEVEL_2_CELL:      return QStringLiteral("2");
+				case LEVEL_3_CELL:      return QStringLiteral("3");
+				case LABEL_CELL:        return tr("Label");
+				case CONDUCTOR_CELL:    return tr("Numéro de conducteur");
+				case XREF_CELL:         return tr("Référence croisé");
+				case CABLE_CELL:        return tr("Câble");
+				case CABLE_WIRE_CELL:   return tr("Couleur / fil câble");
+				case WIRE_SECTION_CELL: return tr("Section");
+				case ZIEL1_CELL:        return tr("Ziel 1 (extern)");
+				case ZIEL2_CELL:        return tr("Ziel 2 (intern)");
+				case TYPE_CELL:         return tr("Type");
+				case FUNCTION_CELL:     return tr("Fonction");
+				case LED_CELL:          return tr("led");
+				case MANUFACTURER_CELL: return tr("Hersteller");
+				case ARTICLE_CELL:      return tr("Artikelnummer");
+				default:                return QVariant();
 			}
 		}
 	}
@@ -307,11 +361,12 @@ Qt::ItemFlags TerminalStripModel::flags(const QModelIndex &index) const
 	Qt::ItemFlags flags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
 
 	auto c = index.column();
-	if (c == LABEL_CELL || c == TYPE_CELL || c == FUNCTION_CELL)
+	if (c == LABEL_CELL    || c == TYPE_CELL      || c == FUNCTION_CELL ||
+		c == CABLE_CELL    || c == CABLE_WIRE_CELL || c == WIRE_SECTION_CELL ||
+		c == MANUFACTURER_CELL || c == ARTICLE_CELL)
 		flags = flags | Qt::ItemIsEditable;
-	if (c == LED_CELL) {
+	if (c == LED_CELL)
 		flags = flags | Qt::ItemIsUserCheckable;
-	}
 	return flags;
 }
 
@@ -503,12 +558,40 @@ void TerminalStripModel::reload()
 	endResetModel();
 }
 
+// Extract the numeric terminal index from a label (e.g. "-X1:5" → "5", "-5" → "5")
+static QString extractTerminalIdx(const QString &label)
+{
+	const int colon = label.indexOf(QLatin1Char(':'));
+	if (colon >= 0) {
+		QString after = label.mid(colon + 1);
+		const int dot = after.indexOf(QLatin1Char('.'));
+		if (dot >= 0) after = after.left(dot);
+		return after.trimmed();
+	}
+	QString v = label.trimmed();
+	if (v.startsWith(QLatin1Char('-'))) v = v.mid(1);
+	return v.isEmpty() ? QStringLiteral("?") : v;
+}
+
 void TerminalStripModel::fillPhysicalTerminalData()
 {
 		//Get all physical terminal
 	if (m_terminal_strip)
 	{
-		for (const auto &phy_t : m_terminal_strip->physicalTerminal())
+		auto physList = m_terminal_strip->physicalTerminal();
+		std::sort(physList.begin(), physList.end(),
+			[](const QSharedPointer<PhysicalTerminal> &a, const QSharedPointer<PhysicalTerminal> &b) {
+				const auto ra = a->realTerminals();
+				const auto rb = b->realTerminals();
+				const QString ia = ra.isEmpty() ? QString() : extractTerminalIdx(ra.first()->label());
+				const QString ib = rb.isEmpty() ? QString() : extractTerminalIdx(rb.first()->label());
+				bool okA, okB;
+				const int na = ia.toInt(&okA), nb = ib.toInt(&okB);
+				if (okA && okB) return na < nb;
+				return ia < ib;
+			});
+
+		for (const auto &phy_t : physList)
 		{
 			modelPhysicalTerminalData mptd;
 			mptd.pos_ = phy_t->pos();
@@ -518,7 +601,15 @@ void TerminalStripModel::fillPhysicalTerminalData()
 			{
 				if (!real_t.isNull())
 				{
-					mptd.real_data.append(modelRealTerminalData::data(real_t));
+					// activePairIndices() returns the exact pair indices (0=a/b,
+					// 1=c/d, 2=e/f) that have connected conductors.  Using this
+					// instead of a plain 0..N loop ensures that a terminal element
+					// which only uses e.g. the "c" connection (pair index 1) gets
+					// its correct ziel1ForPair(1) call rather than a wrong
+					// ziel1ForPair(0) that would always return empty.
+					for (int p : real_t->activePairIndices()) {
+						mptd.real_data.append(modelRealTerminalData::data(real_t, p));
+					}
 				}
 			}
 
