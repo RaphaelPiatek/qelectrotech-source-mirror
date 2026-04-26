@@ -59,13 +59,16 @@ class TerminalStripModel : public QAbstractTableModel
 			Cable = 9,
 			CableWire = 10,
 			WireSection = 11,
-			Ziel1 = 12,
-			Ziel2 = 13,
-			Type = 14,
-			Function = 15,
-			Led = 16,
-			Manufacturer = 17,
-			Article = 18,
+			CableRight = 12,
+			CableWireRight = 13,
+			WireSectionRight = 14,
+			Ziel1 = 15,
+			Ziel2 = 16,
+			Type = 17,
+			Function = 18,
+			Led = 19,
+			Manufacturer = 20,
+			Article = 21,
 			Invalid = 99
 		};
 
@@ -105,6 +108,7 @@ class TerminalStripModel : public QAbstractTableModel
 
 	private:
 		void fillPhysicalTerminalData();
+		void precomputeBridgePixmaps();
 		modelRealTerminalData dataAtRow(int row) const;
 		void replaceDataAtRow(modelRealTerminalData data, int row);
 		modelPhysicalTerminalData physicalDataAtIndex(int index) const;

@@ -210,20 +210,28 @@ void TerminalStripEditor::apply()
 					if (data_.level_ != data_.real_terminal.toStrongRef()->level())
 						m_project->undoStack()->push(new ChangeTerminalLevel(m_current_strip, data_.real_terminal, data_.level_));
 
-					// Update conductor properties (cable, wire color, wire section) for this pair
+					// Update conductor properties per side (a/c/e = left/Ziel1, b/d/f = right/Ziel2)
 					static const QString LEFT_LETTERS[]  = {"a", "c", "e"};
 					static const QString RIGHT_LETTERS[] = {"b", "d", "f"};
 					const int pi = data_.connection_pair_index_;
 					for (Terminal *t : element->terminals()) {
 						const QString tname = t->name().toLower();
-						if (tname != LEFT_LETTERS[pi] && tname != RIGHT_LETTERS[pi]) continue;
+						const bool isLeft  = (tname == LEFT_LETTERS[pi]);
+						const bool isRight = (tname == RIGHT_LETTERS[pi]);
+						if (!isLeft && !isRight) continue;
 						for (Conductor *c : t->conductors()) {
 							QVariant old_val, new_val;
 							old_val.setValue(c->properties());
 							ConductorProperties np = c->properties();
-							np.m_cable        = data_.cable_;
-							np.m_wire_color   = data_.cable_wire;
-							np.m_wire_section = data_.wire_section_;
+							if (isLeft) {
+								np.m_cable        = data_.cable_;
+								np.m_wire_color   = data_.cable_wire;
+								np.m_wire_section = data_.wire_section_;
+							} else {
+								np.m_cable        = data_.right_cable_;
+								np.m_wire_color   = data_.right_color_;
+								np.m_wire_section = data_.right_section_;
+							}
 							new_val.setValue(np);
 							if (old_val != new_val)
 								m_project->undoStack()->push(new QPropertyUndoCommand(c, "properties", old_val, new_val));
