@@ -35,6 +35,10 @@ jobs:
           mingw-w64-ucrt-x86_64-kcoreaddons
           mingw-w64-ucrt-x86_64-extra-cmake-modules
 
+    - name: Force Qt5 by removing Qt6 cmake files
+      shell: msys2 {0}
+      run: rm -rf /ucrt64/lib/cmake/Qt6
+
     - name: Build with cmake
       shell: msys2 {0}
       run: |
