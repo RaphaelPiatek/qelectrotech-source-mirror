@@ -539,6 +539,7 @@ set(QET_SRC_FILES
   ${QET_DIR}/sources/TerminalStrip/physicalterminal.cpp
   ${QET_DIR}/sources/TerminalStrip/physicalterminal.h
   ${QET_DIR}/sources/TerminalStrip/realterminal.cpp
+  ${QET_DIR}/sources/TerminalStrip/klemmplanexporter.cpp
   ${QET_DIR}/sources/TerminalStrip/realterminal.h
   ${QET_DIR}/sources/TerminalStrip/terminalstripbridge.cpp
   ${QET_DIR}/sources/TerminalStrip/terminalstripbridge.h
