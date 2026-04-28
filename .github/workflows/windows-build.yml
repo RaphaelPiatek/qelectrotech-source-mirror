@@ -54,14 +54,18 @@ jobs:
           ..
         ninja
 
-    - name: Find exe
+    - name: Deploy Qt DLLs
       shell: msys2 {0}
-      run: find $GITHUB_WORKSPACE/build -name "*.exe"
+      run: |
+        mkdir -p $GITHUB_WORKSPACE/deploy
+        cp $GITHUB_WORKSPACE/build/qelectrotech.exe $GITHUB_WORKSPACE/deploy/
+        windeployqt --release $GITHUB_WORKSPACE/deploy/qelectrotech.exe
+        cp /ucrt64/bin/libgcc_s_seh-1.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libstdc++-6.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libwinpthread-1.dll $GITHUB_WORKSPACE/deploy/ || true
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: qelectrotech-windows
-        path: |
-          build/**/*.exe
-          build/*.exe
+        path: deploy/
