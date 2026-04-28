@@ -1,0 +1,53 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: >-
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-ninja
+          mingw-w64-ucrt-x86_64-qt5-base
+          mingw-w64-ucrt-x86_64-qt5-svg
+          mingw-w64-ucrt-x86_64-qt5-tools
+          mingw-w64-ucrt-x86_64-qt5-multimedia
+          mingw-w64-ucrt-x86_64-sqlite3
+          mingw-w64-ucrt-x86_64-pkg-config
+          mingw-w64-ucrt-x86_64-kwidgetsaddons
+          mingw-w64-ucrt-x86_64-kcoreaddons
+          mingw-w64-ucrt-x86_64-extra-cmake-modules
+
+    - name: Build with cmake
+      shell: msys2 {0}
+      run: |
+        cd $GITHUB_WORKSPACE
+        mkdir build && cd build
+        cmake -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          ..
+        ninja
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: qelectrotech-windows
+        path: build/release/qelectrotech.exe
