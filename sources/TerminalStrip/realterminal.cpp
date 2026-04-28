@@ -187,9 +187,9 @@ static ResolveResult followFromReport(
 
 	for (Terminal *rt : report->terminals()) {
 		for (Conductor *rc : rt->conductors()) {
-			Terminal *far = (rc->terminal1 == rt) ? rc->terminal2 : rc->terminal1;
-			if (!far || !far->parentElement()) continue;
-			auto res = resolveTarget(far->parentElement(), far->name(),
+			Terminal *farTerminal = (rc->terminal1 == rt) ? rc->terminal2 : rc->terminal1;
+			if (!farTerminal || !farTerminal->parentElement()) continue;
+			auto res = resolveTarget(farTerminal->parentElement(), farTerminal->name(),
 									 skipSelf, visited, conductorFunction, project);
 			if (!res.bmk.isEmpty() || !res.pin.isEmpty()) return res;
 		}
