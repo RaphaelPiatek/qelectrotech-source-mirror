@@ -29,7 +29,6 @@ jobs:
           mingw-w64-ucrt-x86_64-qt5-base
           mingw-w64-ucrt-x86_64-qt5-svg
           mingw-w64-ucrt-x86_64-qt5-tools
-          mingw-w64-ucrt-x86_64-qt5-translations
           mingw-w64-ucrt-x86_64-sqlite3
           mingw-w64-ucrt-x86_64-pkg-config
           mingw-w64-ucrt-x86_64-kwidgetsaddons
@@ -45,6 +44,8 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DCMAKE_PREFIX_PATH=/ucrt64 \
           -DQt5_DIR=/ucrt64/lib/cmake/Qt5 \
+          -DQT_VERSION_MAJOR=5 \
+          -DBUILD_TESTING=OFF \
           ..
         ninja
 
