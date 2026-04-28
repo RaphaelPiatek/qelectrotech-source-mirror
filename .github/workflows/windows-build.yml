@@ -46,6 +46,7 @@ jobs:
           -DQt5_DIR=/ucrt64/lib/cmake/Qt5 \
           -DQT_VERSION_MAJOR=5 \
           -DBUILD_TESTING=OFF \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
           ..
         ninja
 
