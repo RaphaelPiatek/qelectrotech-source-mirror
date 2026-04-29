@@ -59,10 +59,41 @@ jobs:
       run: |
         mkdir -p $GITHUB_WORKSPACE/deploy
         cp $GITHUB_WORKSPACE/build/qelectrotech.exe $GITHUB_WORKSPACE/deploy/
-        /ucrt64/share/qt5/bin/windeployqt --release $GITHUB_WORKSPACE/deploy/qelectrotech.exe
-        cp /ucrt64/bin/libgcc_s_seh-1.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libstdc++-6.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libwinpthread-1.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/Qt5*.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/KF5*.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libgcc_s_seh-1.dll $GITHUB_WORKSPACE/deploy/
+        cp /ucrt64/bin/libstdc++-6.dll $GITHUB_WORKSPACE/deploy/
+        cp /ucrt64/bin/libwinpthread-1.dll $GITHUB_WORKSPACE/deploy/
+        cp /ucrt64/bin/libpcre2-16-0.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libpcre2-8-0.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libharfbuzz-0.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libpng16-16.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libfreetype-6.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libglib-2.0-0.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libintl-8.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libiconv-2.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libpcre-1.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/zlib1.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libbz2-1.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libdouble-conversion.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libicuin*.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libicuuc*.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libicudt*.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libzstd.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libb2-1.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libgraphite2.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libsqlite3-0.dll $GITHUB_WORKSPACE/deploy/ || true
+        cp /ucrt64/bin/libmd4c.dll $GITHUB_WORKSPACE/deploy/ || true
+        mkdir -p $GITHUB_WORKSPACE/deploy/platforms
+        cp /ucrt64/share/qt5/plugins/platforms/qwindows.dll $GITHUB_WORKSPACE/deploy/platforms/ || true
+        mkdir -p $GITHUB_WORKSPACE/deploy/sqldrivers
+        cp /ucrt64/share/qt5/plugins/sqldrivers/qsqlite.dll $GITHUB_WORKSPACE/deploy/sqldrivers/ || true
+        mkdir -p $GITHUB_WORKSPACE/deploy/imageformats
+        cp /ucrt64/share/qt5/plugins/imageformats/*.dll $GITHUB_WORKSPACE/deploy/imageformats/ || true
+        mkdir -p $GITHUB_WORKSPACE/deploy/iconengines
+        cp /ucrt64/share/qt5/plugins/iconengines/*.dll $GITHUB_WORKSPACE/deploy/iconengines/ || true
+        mkdir -p $GITHUB_WORKSPACE/deploy/styles
+        cp /ucrt64/share/qt5/plugins/styles/*.dll $GITHUB_WORKSPACE/deploy/styles/ || true
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
