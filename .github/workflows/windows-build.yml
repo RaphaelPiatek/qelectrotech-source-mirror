@@ -94,6 +94,11 @@ jobs:
         cp /ucrt64/share/qt5/plugins/iconengines/*.dll $GITHUB_WORKSPACE/deploy/iconengines/ || true
         mkdir -p $GITHUB_WORKSPACE/deploy/styles
         cp /ucrt64/share/qt5/plugins/styles/*.dll $GITHUB_WORKSPACE/deploy/styles/ || true
+        mkdir -p $GITHUB_WORKSPACE/deploy/lang
+        cp $GITHUB_WORKSPACE/lang/*.qm $GITHUB_WORKSPACE/deploy/lang/ || true
+        cp $GITHUB_WORKSPACE/build/*.qm $GITHUB_WORKSPACE/deploy/lang/ || true
+        mkdir -p $GITHUB_WORKSPACE/deploy/translations
+        cp /ucrt64/share/qt5/translations/*.qm $GITHUB_WORKSPACE/deploy/translations/ || true
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
