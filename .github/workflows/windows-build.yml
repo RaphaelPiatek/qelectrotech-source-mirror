@@ -94,10 +94,10 @@ jobs:
         cp /ucrt64/share/qt5/plugins/iconengines/*.dll $GITHUB_WORKSPACE/deploy/iconengines/ || true
         mkdir -p $GITHUB_WORKSPACE/deploy/styles
         cp /ucrt64/share/qt5/plugins/styles/*.dll $GITHUB_WORKSPACE/deploy/styles/ || true
-        mkdir -p $GITHUB_WORKSPACE/deploy/lang
-        cp $GITHUB_WORKSPACE/lang/*.qm $GITHUB_WORKSPACE/deploy/lang/ || true
-        cp $GITHUB_WORKSPACE/build/*.qm $GITHUB_WORKSPACE/deploy/lang/ || true
-        mkdir -p $GITHUB_WORKSPACE/deploy/translations
+        cd $GITHUB_WORKSPACE
+        mkdir -p deploy/lang
+        cp lang/*.qm deploy/lang/ 2>/dev/null || true
+        ls deploy/lang/
         cp /ucrt64/share/qt5/translations/*.qm $GITHUB_WORKSPACE/deploy/translations/ || true
         echo "=== Inhalt von deploy/lang ==="
         ls -la $GITHUB_WORKSPACE/deploy/lang/ || echo "lang Ordner leer/fehlt"
