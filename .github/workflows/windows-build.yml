@@ -7,107 +7,185 @@ on:
     branches: [ master ]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-windows:
     runs-on: windows-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        submodules: recursive
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-    - name: Install MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: UCRT64
-        update: true
-        install: >-
-          mingw-w64-ucrt-x86_64-gcc
-          mingw-w64-ucrt-x86_64-cmake
-          mingw-w64-ucrt-x86_64-ninja
-          mingw-w64-ucrt-x86_64-qt5-base
-          mingw-w64-ucrt-x86_64-qt5-svg
-          mingw-w64-ucrt-x86_64-qt5-tools
-          mingw-w64-ucrt-x86_64-sqlite3
-          mingw-w64-ucrt-x86_64-pkg-config
-          mingw-w64-ucrt-x86_64-kwidgetsaddons
-          mingw-w64-ucrt-x86_64-kcoreaddons
-          mingw-w64-ucrt-x86_64-extra-cmake-modules
+      - name: Install MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          cache: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-qt5-base
+            mingw-w64-ucrt-x86_64-qt5-svg
+            mingw-w64-ucrt-x86_64-qt5-tools
+            mingw-w64-ucrt-x86_64-qt5-translations
+            mingw-w64-ucrt-x86_64-sqlite3
+            mingw-w64-ucrt-x86_64-pkg-config
+            mingw-w64-ucrt-x86_64-kwidgetsaddons
+            mingw-w64-ucrt-x86_64-kcoreaddons
+            mingw-w64-ucrt-x86_64-extra-cmake-modules
+            mingw-w64-ucrt-x86_64-nsis
 
-    - name: Force Qt5 by removing Qt6 cmake files
-      shell: msys2 {0}
-      run: rm -rf /ucrt64/lib/cmake/Qt6
+      - name: Build with cmake
+        shell: msys2 {0}
+        run: |
+          cd $GITHUB_WORKSPACE
+          mkdir build && cd build
+          cmake -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH=/ucrt64 \
+            -DQt5_DIR=/ucrt64/lib/cmake/Qt5 \
+            -DQT_VERSION_MAJOR=5 \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Qt6=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            ..
+          ninja
 
-    - name: Build with cmake
-      shell: msys2 {0}
-      run: |
-        cd $GITHUB_WORKSPACE
-        mkdir build && cd build
-        cmake -G Ninja \
-          -DCMAKE_BUILD_TYPE=Release \
-          -DCMAKE_PREFIX_PATH=/ucrt64 \
-          -DQt5_DIR=/ucrt64/lib/cmake/Qt5 \
-          -DQT_VERSION_MAJOR=5 \
-          -DBUILD_TESTING=OFF \
-          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-          ..
-        ninja
+      - name: Deploy with windeployqt
+        shell: msys2 {0}
+        run: |
+          # ── Arborescence attendue par QET64.nsi ──────────────────────────
+          # nsis_root/
+          #   files/
+          #     bin/QElectroTech.exe  + DLLs + plugins Qt
+          #     elements/
+          #     lang/
+          #     titleblocks/
+          #     examples/
+          #     fonts/
+          #     ico/
+          #     LICENSE  ChangeLog  CREDIT  README  ...
+          #   images/         (wizard.bmp, header.bmp pour l'UI de l'installeur)
+          #   lang_extra.nsh  lang_extra_fr.nsh  lang_extra_missing.nsh
+          #   Lancer QET.bat
+          #   QET64.nsi
+          # ─────────────────────────────────────────────────────────────────
 
-    - name: Deploy Qt DLLs
-      shell: msys2 {0}
-      run: |
-        mkdir -p $GITHUB_WORKSPACE/deploy
-        cp $GITHUB_WORKSPACE/build/qelectrotech.exe $GITHUB_WORKSPACE/deploy/
-        cp /ucrt64/bin/Qt5*.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/KF5*.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libgcc_s_seh-1.dll $GITHUB_WORKSPACE/deploy/
-        cp /ucrt64/bin/libstdc++-6.dll $GITHUB_WORKSPACE/deploy/
-        cp /ucrt64/bin/libwinpthread-1.dll $GITHUB_WORKSPACE/deploy/
-        cp /ucrt64/bin/libpcre2-16-0.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libpcre2-8-0.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libharfbuzz-0.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libpng16-16.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libfreetype-6.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libglib-2.0-0.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libintl-8.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libiconv-2.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libpcre-1.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/zlib1.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libbz2-1.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libdouble-conversion.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libicuin*.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libicuuc*.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libicudt*.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libzstd.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libb2-1.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libgraphite2.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libsqlite3-0.dll $GITHUB_WORKSPACE/deploy/ || true
-        cp /ucrt64/bin/libmd4c.dll $GITHUB_WORKSPACE/deploy/ || true
-        mkdir -p $GITHUB_WORKSPACE/deploy/platforms
-        cp /ucrt64/share/qt5/plugins/platforms/qwindows.dll $GITHUB_WORKSPACE/deploy/platforms/ || true
-        mkdir -p $GITHUB_WORKSPACE/deploy/sqldrivers
-        cp /ucrt64/share/qt5/plugins/sqldrivers/qsqlite.dll $GITHUB_WORKSPACE/deploy/sqldrivers/ || true
-        mkdir -p $GITHUB_WORKSPACE/deploy/imageformats
-        cp /ucrt64/share/qt5/plugins/imageformats/*.dll $GITHUB_WORKSPACE/deploy/imageformats/ || true
-        mkdir -p $GITHUB_WORKSPACE/deploy/iconengines
-        cp /ucrt64/share/qt5/plugins/iconengines/*.dll $GITHUB_WORKSPACE/deploy/iconengines/ || true
-        mkdir -p $GITHUB_WORKSPACE/deploy/styles
-        cp /ucrt64/share/qt5/plugins/styles/*.dll $GITHUB_WORKSPACE/deploy/styles/ || true
-        cd $GITHUB_WORKSPACE
-        mkdir -p deploy/lang
-        cp lang/*.qm deploy/lang/ 2>/dev/null || true
-        ls deploy/lang/
-        cp /ucrt64/share/qt5/translations/*.qm $GITHUB_WORKSPACE/deploy/translations/ || true
-        echo "=== Inhalt von deploy/lang ==="
-        ls -la $GITHUB_WORKSPACE/deploy/lang/ || echo "lang Ordner leer/fehlt"
-        echo "=== Inhalt von source lang ==="
-        ls $GITHUB_WORKSPACE/lang/ 2>/dev/null | head -20
-        echo "=== Alle .qm Dateien ==="
-        find $GITHUB_WORKSPACE -name "*.qm" 2>/dev/null
+          NSIS_ROOT="$GITHUB_WORKSPACE/nsis_root"
+          FILES="$NSIS_ROOT/files"
+          BIN="$FILES/bin"
+          mkdir -p "$BIN"
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: qelectrotech-windows
-        path: deploy/
+          # 1. Exécutable
+          cp "$GITHUB_WORKSPACE/build/qelectrotech.exe" "$BIN/QElectroTech.exe"
+
+          # 2. DLLs Qt + plugins via windeployqt (déposés dans bin/)
+          /ucrt64/bin/windeployqt \
+            --release \
+            --no-translations \
+            --no-compiler-runtime \
+            --dir "$BIN" \
+            "$BIN/QElectroTech.exe"
+
+          # 3. Runtimes MinGW (non gérés par windeployqt)
+          cp /ucrt64/bin/libgcc_s_seh-1.dll  "$BIN/"
+          cp /ucrt64/bin/libstdc++-6.dll      "$BIN/"
+          cp /ucrt64/bin/libwinpthread-1.dll  "$BIN/"
+
+          # 4. DLLs KDE Frameworks
+          cp /ucrt64/bin/KF5*.dll "$BIN/" || true
+
+          # 5. SQLite
+          cp /ucrt64/bin/libsqlite3-0.dll "$BIN/" || true
+
+          # 6. Données applicatives (éléments, traductions, exemples, ...)
+          cp -r "$GITHUB_WORKSPACE/elements"    "$FILES/elements"    || true
+          cp -r "$GITHUB_WORKSPACE/lang"        "$FILES/lang"        || true
+          cp -r "$GITHUB_WORKSPACE/titleblocks" "$FILES/titleblocks" || true
+          cp -r "$GITHUB_WORKSPACE/examples"    "$FILES/examples"    || true
+          cp -r "$GITHUB_WORKSPACE/fonts"       "$FILES/fonts"       || true
+          cp -r "$GITHUB_WORKSPACE/ico"         "$FILES/ico"         || true
+
+          # 7. Fichiers texte attendus par le .nsi
+          for f in LICENSE ChangeLog CREDIT README ELEMENTS.LICENSE \
+                   qet_uninstall_file_associations.reg register_filetypes.bat; do
+            cp "$GITHUB_WORKSPACE/$f" "$FILES/$f" 2>/dev/null || true
+          done
+
+          # 8. Script NSIS + helpers .nsh + images de l'installeur
+          cp "$GITHUB_WORKSPACE/build-aux/windows/QET64.nsi"              "$NSIS_ROOT/"
+          cp "$GITHUB_WORKSPACE/build-aux/windows/lang_extra.nsh"         "$NSIS_ROOT/" || true
+          cp "$GITHUB_WORKSPACE/build-aux/windows/lang_extra_fr.nsh"      "$NSIS_ROOT/" || true
+          cp "$GITHUB_WORKSPACE/build-aux/windows/lang_extra_missing.nsh" "$NSIS_ROOT/" || true
+          cp -r "$GITHUB_WORKSPACE/build-aux/windows/images"              "$NSIS_ROOT/" || true
+
+          # 9. Script de lancement requis par le .nsi ("Lancer QET.bat")
+          if [ -f "$GITHUB_WORKSPACE/build-aux/windows/Lancer QET.bat" ]; then
+            cp "$GITHUB_WORKSPACE/build-aux/windows/Lancer QET.bat" "$NSIS_ROOT/"
+          else
+            # Fallback minimal si le fichier n'est pas dans le dépôt
+            printf '@echo off\r\nstart "" "%%~dp0bin\\QElectroTech.exe" %%*\r\n' \
+              > "$NSIS_ROOT/Lancer QET.bat"
+          fi
+
+      - name: Extract version for installer name
+        shell: msys2 {0}
+        id: qet_version
+        run: |
+          VERSION=$(grep -m1 'project.*VERSION' "$GITHUB_WORKSPACE/CMakeLists.txt" \
+            | grep -oP '[\d]+\.[\d]+[\w\+\-\.]*' | head -1 || echo "dev")
+          GIT_SHORT=$(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          FULL_VERSION="${VERSION}+git${GIT_SHORT}_x86_64-win64"
+          echo "version=$FULL_VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $FULL_VERSION"
+
+      - name: Patch SOFT_VERSION in QET64.nsi
+        shell: msys2 {0}
+        run: |
+          # Remplace la version codée en dur dans le .nsi par celle du build courant
+          VERSION="${{ steps.qet_version.outputs.version }}"
+          NSI="$GITHUB_WORKSPACE/nsis_root/QET64.nsi"
+          sed -i "s|!define SOFT_VERSION .*|!define SOFT_VERSION \"${VERSION}\"|" "$NSI"
+          grep 'SOFT_VERSION' "$NSI"
+
+      - name: Build NSIS installer
+        shell: msys2 {0}
+        run: |
+          cd "$GITHUB_WORKSPACE/nsis_root"
+          makensis QET64.nsi
+          ls -lh Installer_QElectroTech-*.exe
+
+      - name: Move installer to dist/
+        shell: msys2 {0}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          mv "$GITHUB_WORKSPACE/nsis_root"/Installer_QElectroTech-*.exe \
+             "$GITHUB_WORKSPACE/dist/"
+
+      - name: Upload build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: build/CMakeFiles/*.log
+
+      - name: Upload portable (files/ sans installeur)
+        uses: actions/upload-artifact@v4
+        with:
+          name: qelectrotech-windows-portable
+          path: nsis_root/files/
+          retention-days: 14
+
+      - name: Upload NSIS installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: qelectrotech-windows-installer
+          path: dist/Installer_QElectroTech-*.exe
+          retention-days: 14
