@@ -43,6 +43,7 @@
 // Target width : 1410  (height stays unscaled — computed from row count)
 // ────────────────────────────────────────────────────────────────────────────
 static constexpr double K_SX = 1499.0 / 1555.0;
+static constexpr int MAX_ROWS_PER_PAGE = 36;
 static inline int kx(int v) { return qRound(v * K_SX); }
 static inline int ky(int v) { return v; }
 
@@ -134,52 +135,63 @@ void KlemmplanExporter::insertIntoProject(QETProject          *project,
 		                      names);
 	}
 
-	// ── 2. Build the <definition> element ──────────────────────────────────
-	const QVector<Row> rows = buildRows(strip);
-	QDomDocument defDoc;
-	QDomElement  definition = buildDefinition(defDoc, strip, rows);
+	// ── 2. Build rows and split into pages ────────────────────────────────
+	const QVector<Row> allRows = buildRows(strip);
+	const QMap<QString,int> cableToId = buildCableMap(allRows);
 
-	// ── 3. Remove old element with same name (if any) ──────────────────────
-	const QString fname   = elementFileName(strip);
+	const QVector<QVector<Row>> pages = splitIntoPages(allRows, MAX_ROWS_PER_PAGE);
+	const int totalPages = pages.size();
 	const QString dirPath = QStringLiteral("import/Klemmenplaene");
-	const QString elPath  = dirPath % QLatin1Char('/') % fname;
 
-	if (collection->exist(elPath))
-		collection->removeElement(elPath);
+	// Horizontal placement: pages side by side with a 50-unit gap
+	static constexpr int PAGE_WIDTH_WITH_GAP = 1499 + 50;
+	int xOffset = 30;
 
-	// ── 4. Add the new definition ──────────────────────────────────────────
-	if (!collection->addElementDefinition(dirPath, fname, definition)) {
-		QMessageBox::critical(nullptr,
-			QObject::tr("Klemmplan"),
-			QObject::tr("Element konnte nicht in die Sammlung eingefügt werden."));
-		return;
+	for (int page = 1; page <= totalPages; ++page) {
+		const QVector<Row> &pageRows = pages.at(page - 1);
+
+		// ── 3. Remove old element with same name (if any) ──────────────────
+		const QString fname  = elementFileName(strip, page);
+		const QString elPath = dirPath % QLatin1Char('/') % fname;
+		if (collection->exist(elPath))
+			collection->removeElement(elPath);
+
+		// ── 4. Build and register definition ──────────────────────────────
+		QDomDocument defDoc;
+		QDomElement definition = buildDefinition(defDoc, strip, pageRows, cableToId, page, totalPages);
+
+		if (!collection->addElementDefinition(dirPath, fname, definition)) {
+			QMessageBox::critical(nullptr,
+				QObject::tr("Klemmplan"),
+				QObject::tr("Element konnte nicht in die Sammlung eingefügt werden."));
+			return;
+		}
+
+		// ── 5. Instantiate the element ─────────────────────────────────────
+		const QString embedPath = QStringLiteral("embed://") % elPath;
+		ElementsLocation loc(embedPath, project);
+		if (!loc.exist()) {
+			QMessageBox::critical(nullptr,
+				QObject::tr("Klemmplan"),
+				QObject::tr("ElementsLocation nicht gefunden: ") + embedPath);
+			return;
+		}
+
+		int state = 0;
+		Element *element = ElementFactory::Instance()->createElement(loc, nullptr, &state);
+		if (state || !element) {
+			delete element;
+			QMessageBox::critical(nullptr,
+				QObject::tr("Klemmplan"),
+				QObject::tr("Element konnte nicht erstellt werden."));
+			return;
+		}
+
+		// ── 6. Place on the diagram (pages side by side) ───────────────────
+		diagram->undoStack().push(
+			new AddGraphicsObjectCommand(element, diagram, QPointF(xOffset, 30)));
+		xOffset += PAGE_WIDTH_WITH_GAP;
 	}
-
-	// ── 5. Instantiate the element ─────────────────────────────────────────
-	// Collection path: embed://import/Klemmenplaene/<fname>
-	const QString embedPath = QStringLiteral("embed://") % elPath;
-	ElementsLocation loc(embedPath, project);
-
-	if (!loc.exist()) {
-		QMessageBox::critical(nullptr,
-			QObject::tr("Klemmplan"),
-			QObject::tr("ElementsLocation nicht gefunden: ") + embedPath);
-		return;
-	}
-
-	int state = 0;
-	Element *element = ElementFactory::Instance()->createElement(loc, nullptr, &state);
-	if (state || !element) {
-		delete element;
-		QMessageBox::critical(nullptr,
-			QObject::tr("Klemmplan"),
-			QObject::tr("Element konnte nicht erstellt werden."));
-		return;
-	}
-
-	// ── 6. Place on the diagram ────────────────────────────────────────────
-	diagram->undoStack().push(
-		new AddGraphicsObjectCommand(element, diagram, QPointF(30, 30)));
 }
 
 // ============================================================================
@@ -296,12 +308,75 @@ QVector<KlemmplanExporter::Row> KlemmplanExporter::buildRows(const TerminalStrip
 }
 
 // ============================================================================
+// Cable map builder
+// ============================================================================
+
+QMap<QString,int> KlemmplanExporter::buildCableMap(const QVector<Row> &rows)
+{
+	QVector<QString> cableOrder;
+	QMap<QString, bool> seen;
+	auto process = [&](const QString &name) {
+		if (name.isEmpty() || seen.contains(name)) return;
+		seen[name] = true;
+		cableOrder.append(name);
+	};
+	for (const auto &row : rows) {
+		process(row.left_cable);
+		process(row.right_cable);
+	}
+	QMap<QString,int> result;
+	for (int i = 0; i < cableOrder.size(); ++i)
+		result[cableOrder.at(i)] = i + 1;
+	return result;
+}
+
+// ============================================================================
+// Page splitter — keeps all rows of one terminal (same idx) on the same page
+// ============================================================================
+
+QVector<QVector<KlemmplanExporter::Row>>
+KlemmplanExporter::splitIntoPages(const QVector<Row> &allRows, int maxRows)
+{
+	QVector<QVector<Row>> pages;
+	QVector<Row> current;
+
+	int i = 0;
+	while (i < allRows.size()) {
+		// collect the whole terminal group (same idx)
+		const QString termIdx = allRows[i].idx;
+		int groupStart = i;
+		while (i < allRows.size() && allRows[i].idx == termIdx)
+			++i;
+		const int groupSize = i - groupStart;
+
+		// if adding this group would overflow, flush current page first
+		// (only if there is already content — a single oversized terminal
+		//  stays alone on its page rather than being split)
+		if (!current.isEmpty() && current.size() + groupSize > maxRows) {
+			pages.append(current);
+			current.clear();
+		}
+
+		for (int j = groupStart; j < i; ++j)
+			current.append(allRows[j]);
+	}
+
+	if (!current.isEmpty())
+		pages.append(current);
+
+	return pages;
+}
+
+// ============================================================================
 // XML definition builder
 // ============================================================================
 
-QDomElement KlemmplanExporter::buildDefinition(QDomDocument        &doc,
-                                                const TerminalStrip *strip,
-                                                const QVector<Row>  &rows)
+QDomElement KlemmplanExporter::buildDefinition(QDomDocument            &doc,
+                                                const TerminalStrip     *strip,
+                                                const QVector<Row>      &rows,
+                                                const QMap<QString,int> &cableToId,
+                                                int pageNum,
+                                                int totalPages)
 {
 	// Dynamic height: header up to y=245, then 20 px per data row, plus border
 	const int dataBottom = 245 + (int)rows.size() * 20;
@@ -324,7 +399,7 @@ QDomElement KlemmplanExporter::buildDefinition(QDomDocument        &doc,
 	QDomElement nameDe = doc.createElement(QStringLiteral("name"));
 	nameDe.setAttribute(QStringLiteral("lang"), QStringLiteral("de"));
 	nameDe.appendChild(doc.createTextNode(
-		QStringLiteral("Terminal strip %1 / 1").arg(displayName(strip))));
+		QStringLiteral("Terminal strip %1 / %2").arg(displayName(strip)).arg(pageNum)));
 	names.appendChild(nameDe);
 	definition.appendChild(names);
 
@@ -340,8 +415,7 @@ QDomElement KlemmplanExporter::buildDefinition(QDomDocument        &doc,
 	drawRowGrid(doc, desc, rows);
 
 	// Cable inventory + header texts
-	QMap<QString, int> cableToId;
-	drawCableInventory(doc, desc, rows, cableToId);
+	drawCableInventory(doc, desc, rows, cableToId, pageNum, totalPages);
 
 	// Strip name (large label in title block)
 	addText(doc, desc, 770, 40, displayName(strip), 28, true);
@@ -509,46 +583,48 @@ void KlemmplanExporter::drawRowGrid(QDomDocument &doc, QDomElement &desc,
 	}
 }
 
-void KlemmplanExporter::drawCableInventory(QDomDocument       &doc,
-                                            QDomElement        &desc,
-                                            const QVector<Row> &rows,
-                                            QMap<QString,int>  &cable_to_id_out)
+void KlemmplanExporter::drawCableInventory(QDomDocument            &doc,
+                                            QDomElement             &desc,
+                                            const QVector<Row>      &rows,
+                                            const QMap<QString,int> &cable_to_id,
+                                            int page_num,
+                                            int total_pages)
 {
+	// Build per-cable info from all rows on this page (section + colors)
 	struct CableInfo { QString section; QSet<QString> colors; };
-	QVector<QString>         cableOrder;
 	QMap<QString, CableInfo> cableMap;
-
-	auto process = [&](const QString &cname, const QString &section, const QString &color) {
-		if (cname.isEmpty()) return;
-		if (!cableMap.contains(cname)) {
-			cableOrder.append(cname);
-			cableMap[cname].section = section;
-		}
-		if (!color.isEmpty()) cableMap[cname].colors.insert(color);
-	};
 	for (const auto &row : rows) {
+		auto process = [&](const QString &name, const QString &section, const QString &color) {
+			if (name.isEmpty()) return;
+			if (section.isEmpty() == false) cableMap[name].section = section;
+			if (!color.isEmpty()) cableMap[name].colors.insert(color);
+		};
 		process(row.left_cable,  row.left_section,  row.left_color);
 		process(row.right_cable, row.right_section, row.right_color);
 	}
 
-	cable_to_id_out.clear();
-	for (int i = 0; i < cableOrder.size(); ++i)
-		cable_to_id_out[cableOrder.at(i)] = i + 1;
+	// Draw cable legend (up to 7 entries, using global IDs)
+	// Show cables in global ID order, capped at 7
+	QVector<QPair<int,QString>> entries; // (id, name)
+	for (auto it = cable_to_id.begin(); it != cable_to_id.end(); ++it)
+		if (it.value() <= 7)
+			entries.append({it.value(), it.key()});
+	std::sort(entries.begin(), entries.end());
 
-	const int maxCables = qMin(cableOrder.size(), 7);
-	for (int i = 0; i < maxCables; ++i) {
-		const QString    &cname = cableOrder.at(i);
-		const CableInfo  &info  = cableMap[cname];
-		const int         yInv  = 30 + (i + 1) * 20 - 10;
-		addText(doc, desc,   5, yInv + 10, QString::number(i + 1), 9, true);
-		addText(doc, desc,  20, yInv + 10, cname);
+	for (const auto &entry : entries) {
+		const int     id    = entry.first;
+		const QString &name = entry.second;
+		const CableInfo &info = cableMap.value(name);
+		const int yInv = 30 + id * 20 - 10;
+		addText(doc, desc,   5, yInv + 10, QString::number(id), 9, true);
+		addText(doc, desc,  20, yInv + 10, name);
 		addText(doc, desc, 220, yInv + 10, info.section);
-		addText(doc, desc, 350, yInv + 10, parseWireCount(cname, info.colors));
+		addText(doc, desc, 350, yInv + 10, parseWireCount(name, info.colors));
 	}
 
 	for (int i = 1; i <= 7; ++i) {
-		addText(doc, desc,  80 + (i-1)*30 + 10, 235, QString::number(i), 7, true);
-		addText(doc, desc, 1270 + (i-1)*30 + 10, 235, QString::number(i), 7, true);
+		addText(doc, desc,  80 + (i-1)*30 + 5, 235, QString::number(i), 7, true);
+		addText(doc, desc, 1270 + (i-1)*30 + 5, 235, QString::number(i), 7, true);
 	}
 
 	addText(doc, desc,  10,  10, QStringLiteral("Cables or single wires used"), 9, true);
@@ -556,7 +632,8 @@ void KlemmplanExporter::drawCableInventory(QDomDocument       &doc,
 	addText(doc, desc, 220,  30, QStringLiteral("Cross-section"));
 	addText(doc, desc, 350,  30, QStringLiteral("Number of wires"));
 	addText(doc, desc, 615,  25, QStringLiteral("Terminal strip:"), 9, true);
-	addText(doc, desc, 615,  80, QStringLiteral("Blatt 1 von 1"), 9, true);
+	addText(doc, desc, 615,  80,
+		QStringLiteral("Blatt %1 von %2").arg(page_num).arg(total_pages), 9, true);
 	addText(doc, desc, 970,  10, QStringLiteral("Terminal used:"), 9, true);
 	addText(doc, desc,1300,  10, QStringLiteral("Comments:"), 9, true);
 	addText(doc, desc, 510, 215, QStringLiteral("externaly"));
@@ -830,8 +907,9 @@ QString KlemmplanExporter::safeName(const QString &text)
 	return v.isEmpty() ? QStringLiteral("X") : v;
 }
 
-QString KlemmplanExporter::elementFileName(const TerminalStrip *strip) {
-	return QStringLiteral("terminal_strip_") + safeName(strip->name()) + QStringLiteral("1.elmt");
+QString KlemmplanExporter::elementFileName(const TerminalStrip *strip, int page) {
+	return QStringLiteral("terminal_strip_") + safeName(strip->name())
+	       + QString::number(page) + QStringLiteral(".elmt");
 }
 
 QString KlemmplanExporter::displayName(const TerminalStrip *strip)

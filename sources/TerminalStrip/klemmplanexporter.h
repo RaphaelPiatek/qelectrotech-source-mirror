@@ -62,10 +62,19 @@ private:
 	// ── row building ────────────────────────────────────────────────────────
 	static QVector<Row> buildRows(const TerminalStrip *strip);
 
+	// ── page splitting — keeps all rows of one terminal on the same page ────
+	static QVector<QVector<Row>> splitIntoPages(const QVector<Row> &rows, int maxRows);
+
+	// ── cable map (must be built once from ALL rows so IDs are consistent) ───
+	static QMap<QString,int> buildCableMap(const QVector<Row> &rows);
+
 	// ── XML definition builder ───────────────────────────────────────────────
-	static QDomElement buildDefinition(QDomDocument        &doc,
-	                                    const TerminalStrip *strip,
-	                                    const QVector<Row>  &rows);
+	static QDomElement buildDefinition(QDomDocument            &doc,
+	                                    const TerminalStrip     *strip,
+	                                    const QVector<Row>      &rows,
+	                                    const QMap<QString,int> &cable_to_id,
+	                                    int page_num,
+	                                    int total_pages);
 
 	// ── low-level drawing primitives ────────────────────────────────────────
 	static void addText  (QDomDocument &doc, QDomElement &desc,
@@ -86,8 +95,10 @@ private:
 	static void drawRowGrid      (QDomDocument &doc, QDomElement &desc,
 	                               const QVector<Row> &rows);
 	static void drawCableInventory(QDomDocument &doc, QDomElement &desc,
-	                                const QVector<Row> &rows,
-	                                QMap<QString,int>  &cable_to_id_out);
+	                                const QVector<Row>      &rows,
+	                                const QMap<QString,int> &cable_to_id,
+	                                int page_num,
+	                                int total_pages);
 	static void drawDataRows     (QDomDocument &doc, QDomElement &desc,
 	                               const QVector<Row>      &rows,
 	                               const QMap<QString,int> &cable_to_id);
@@ -98,7 +109,7 @@ private:
 
 	// ── misc helpers ────────────────────────────────────────────────────────
 	static QString safeName       (const QString &text);
-	static QString elementFileName(const TerminalStrip *strip);
+	static QString elementFileName(const TerminalStrip *strip, int page);
 	static QString displayName    (const TerminalStrip *strip);
 	static QString uid            ();
 	static QString parseWireCount (const QString &name,
