@@ -28,10 +28,6 @@
 
 #include "ui_projectprintwindow.h"
 
-// Private Qt PDF engine for drawHyperlink() — not public API, stable since Qt4
-// Requires QT += gui-private in qelectrotech.pro
-#include <private/qpdf_p.h>
-
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0) // ### Qt 6: remove
 #	include <QDesktopWidget>
 #else
@@ -250,12 +246,6 @@ void ProjectPrintWindow::requestPaint()
 	bool first = true;
 	QPainter painter(m_printer);
 
-	// A real PDF export uses the QPdfEngine; the on-screen preview uses a
-	// preview paint engine. We only post-process when actually writing a PDF.
-	const bool pdfExport =
-		(m_printer->outputFormat() == QPrinter::PdfFormat)
-		&& (dynamic_cast<QPdfEngine*>(painter.paintEngine()) != nullptr);
-
 	for (auto diagram : selectedDiagram())
 	{
 		first ? first = false : m_printer->newPage();
@@ -366,60 +356,38 @@ void ProjectPrintWindow::printDiagram(Diagram *diagram, bool fit_page, QPainter 
 
 	////Inject PDF cross-reference links////
 	if (printer->outputFormat() == QPrinter::PdfFormat && fit_page) {
-		auto *pdfEngine = dynamic_cast<QPdfEngine*>(painter->paintEngine());
-		if (pdfEngine) {
+		const QRectF target = QRectF(painter->viewport());
+		const QRectF source = QRectF(diagram_rect);
+		const qreal s = qMin(target.width()  / source.width(),
+		                     target.height() / source.height());
 
-			// QGraphicsScene::render() fait save()/restore() : worldTransform()
-			// est revenu a l'identite ici. On reconstruit DONC explicitement la
-			// transform appliquee par :
-			//   diagram->render(painter, QRectF(), diagram_rect, KeepAspectRatio)
-			// cible vide => painter->viewport() ; source = diagram_rect ; centre.
-			const QRectF target = QRectF(painter->viewport());
-			const QRectF source = QRectF(diagram_rect); // meme source que render()
+		QTransform fit;
+		fit.translate(target.x(), target.y());
+		fit.scale(s, s);
+		fit.translate(-source.x(), -source.y());
 
-			// render() ANCRE en haut-gauche (pas de centrage) :
-			//   translate(target.topLeft) . scale(s,s) . translate(-source.topLeft)
-			// On reproduit EXACTEMENT ca — surtout PAS de (target-source*s)/2.
-			const qreal s = qMin(target.width()  / source.width(),
-			                     target.height() / source.height());
+		const qreal pt_scale = 72.0 / printer->resolution();
+		const qreal fullH_pt = printer->pageLayout().fullRectPoints().height();
+		const bool  fullPageMode =
+			(printer->pageLayout().mode() == QPageLayout::FullPageMode);
+		const QRect paintPx =
+			printer->pageLayout().paintRectPixels(printer->resolution());
 
-			QTransform fit;
-			fit.translate(target.x(), target.y());
-			fit.scale(s, s);
-			fit.translate(-source.x(), -source.y());   // scene -> pixels device
-
-			// IMPORTANT : QPdfEngine::drawHyperlink() applique lui-meme
-			// pageMatrix() (echelle 72/resolution + inversion de Y + marges).
-			// On lui passe donc le rectangle en PIXELS DEVICE, sans aucune
-			// conversion en points ni flip de notre cote.
-			const QRectF pageBounds(0, 0, target.width(), target.height());
-
-			// ---- Device-pixels -> PDF points, replicating QPdfEnginePrivate::pageMatrix()
-			// (same geometry for every page: same printer, page size and margins). ----
-			const qreal pt_scale = 72.0 / printer->resolution();
-			const qreal fullH_pt = printer->pageLayout().fullRectPoints().height();
-			const bool  fullPageMode =
-				(printer->pageLayout().mode() == QPageLayout::FullPageMode);
-			const QRect paintPx =
-				printer->pageLayout().paintRectPixels(printer->resolution());
-			auto devToPdf = [=](const QPointF &d) -> QPointF {
-				qreal dx = d.x(), dy = d.y();
-				if (!fullPageMode) { dx += paintPx.left(); dy += paintPx.top(); }
-				return QPointF(pt_scale * dx, fullH_pt - pt_scale * dy);
-			};
-
-			PdfLinks::PageGeometry geom;
-			geom.sceneToDevice = fit;
-			geom.target        = target;
-			geom.pageBounds    = pageBounds;
-			geom.devToPdf      = devToPdf;
-			geom.sourceRectOf  = [this](Diagram *dg) {
-				return QRectF(diagramRect(dg, exportProperties()));
-			};
-			PdfLinks::injectCrossRefLinks(
-				pdfEngine, diagram, geom, diagramPageMap,
-				printer->outputFileName());
-		}
+		PdfLinks::PageGeometry geom;
+		geom.sceneToDevice = fit;
+		geom.target        = target;
+		geom.pageBounds    = QRectF(0, 0, target.width(), target.height());
+		geom.devToPdf = [=](const QPointF &d) -> QPointF {
+			qreal dx = d.x(), dy = d.y();
+			if (!fullPageMode) { dx += paintPx.left(); dy += paintPx.top(); }
+			return QPointF(pt_scale * dx, fullH_pt - pt_scale * dy);
+		};
+		geom.sourceRectOf = [this](Diagram *dg) {
+			return QRectF(diagramRect(dg, exportProperties()));
+		};
+		PdfLinks::injectCrossRefLinks(
+			painter, diagram, geom, diagramPageMap,
+			printer->outputFileName());
 	}
 	////PDF links end////
 

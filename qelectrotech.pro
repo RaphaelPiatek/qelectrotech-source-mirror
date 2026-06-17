@@ -232,9 +232,13 @@ TRANSLATIONS += lang/*.ts
 # Modules Qt utilises par l'application
 QT += xml svg network sql widgets printsupport concurrent KWidgetsAddons KCoreAddons gui-private
 
-# Private Qt GUI headers (needed for QPdfEngine::drawHyperlink)
-# gui-private should add this automatically, but some distros need it explicit
-INCLUDEPATH += $$[QT_INSTALL_HEADERS]/QtGui/$$[QT_VERSION]/QtGui
+# Private Qt GUI headers (QPdfEngine::drawHyperlink) — requires qtbase5-private-dev.
+# Enable the feature only when the private header is actually installed.
+QPDF_PRIVATE_H = $$[QT_INSTALL_HEADERS]/QtGui/$$[QT_VERSION]/QtGui/private/qpdf_p.h
+exists($$QPDF_PRIVATE_H) {
+    DEFINES += QET_HAS_QPDF_PRIVATE
+    INCLUDEPATH += $$[QT_INSTALL_HEADERS]/QtGui/$$[QT_VERSION]/QtGui
+}
 
 # UI DESIGNER FILES AND GENERATION SOURCES FILES
 FORMS += $$files(sources/richtext/*.ui) \

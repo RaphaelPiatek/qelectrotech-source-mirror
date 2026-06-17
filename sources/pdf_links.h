@@ -20,12 +20,12 @@
 
 #include <QMap>
 #include <QPointF>
+#include <QPainter>
 #include <QRectF>
 #include <QString>
 #include <QTransform>
 #include <functional>
 
-class QPdfEngine;
 class Diagram;
 
 /**
@@ -61,7 +61,7 @@ namespace PdfLinks {
 		annotation encoding the target page and a /FitR rectangle;
 		convertUriToGoTo() then rewrites those into native internal GoTo actions.
 	*/
-	void injectCrossRefLinks(QPdfEngine *engine, Diagram *diagram,
+	void injectCrossRefLinks(QPainter *painter, Diagram *diagram,
 							 const PageGeometry &geom,
 							 const QMap<Diagram *, int> &pageMap,
 							 const QString &outputFileName);

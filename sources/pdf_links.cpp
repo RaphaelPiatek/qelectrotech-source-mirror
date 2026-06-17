@@ -23,9 +23,11 @@
 #include "qetgraphicsitem/element.h"
 #include "qetgraphicsitem/elementtextitemgroup.h"
 
-// Private Qt PDF engine for drawHyperlink() — not public API, stable since Qt4.
-// Requires QT += gui-private in qelectrotech.pro / gui-private in CMake.
+// Private Qt PDF engine for drawHyperlink() — requires qtbase5-private-dev.
+// The feature is silently disabled when the package is not installed.
+#ifdef QET_HAS_QPDF_PRIVATE
 #include <private/qpdf_p.h>
+#endif
 
 #include <QByteArray>
 #include <QFile>
@@ -37,11 +39,17 @@
 
 namespace PdfLinks {
 
-void injectCrossRefLinks(QPdfEngine *engine, Diagram *diagram,
+void injectCrossRefLinks(QPainter *painter, Diagram *diagram,
 						 const PageGeometry &geom,
 						 const QMap<Diagram *, int> &pageMap,
 						 const QString &outputFileName)
 {
+#ifndef QET_HAS_QPDF_PRIVATE
+	Q_UNUSED(painter) Q_UNUSED(diagram) Q_UNUSED(geom)
+	Q_UNUSED(pageMap) Q_UNUSED(outputFileName)
+	return;
+#else
+	auto *engine = painter ? dynamic_cast<QPdfEngine *>(painter->paintEngine()) : nullptr;
 	if (!engine || !diagram)
 		return;
 
@@ -165,6 +173,7 @@ void injectCrossRefLinks(QPdfEngine *engine, Diagram *diagram,
 			continue;
 		}
 	}
+#endif // QET_HAS_QPDF_PRIVATE
 }
 
 void convertUriToGoTo(const QString &pdfPath)

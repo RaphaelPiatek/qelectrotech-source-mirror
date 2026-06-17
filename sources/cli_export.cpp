@@ -31,9 +31,6 @@
 #include "titleblockproperties.h"
 #include "wiringlistexport.h"
 
-// Private Qt PDF engine for drawHyperlink() — see pdf_links / projectprintwindow.
-#include <private/qpdf_p.h>
-
 #include <QDir>
 #include <QDirIterator>
 #include <QDomDocument>
@@ -167,7 +164,7 @@ int exportPdf(QETProject &project, const QString &output)
 		// page.  The geometry is rebuilt from the QPdfWriter (not a QPrinter):
 		// render() anchors the diagram top-left with KeepAspectRatio, and the
 		// page is sized to the diagram so the scale is ~1.
-		if (auto *engine = dynamic_cast<QPdfEngine *>(painter.paintEngine())) {
+		{
 			const QRectF source(r);
 			const qreal s = qMin(target.width()  / source.width(),
 								 target.height() / source.height());
@@ -176,8 +173,6 @@ int exportPdf(QETProject &project, const QString &output)
 			fit.scale(s, s);
 			fit.translate(-source.x(), -source.y());
 
-			// Device pixels -> PDF points, replicating the engine's page matrix
-			// (72/resolution scale + Y flip; zero margins -> no paint offset).
 			const qreal pt_scale = 72.0 / writer.resolution();
 			const qreal fullH_pt = writer.pageLayout().fullRectPoints().height();
 			const bool  fullPageMode =
@@ -197,7 +192,7 @@ int exportPdf(QETProject &project, const QString &output)
 			geom.sourceRectOf = [](Diagram *dg) {
 				return QRectF(diagramRect(dg));
 			};
-			PdfLinks::injectCrossRefLinks(engine, diagram, geom, pageMap, output);
+			PdfLinks::injectCrossRefLinks(&painter, diagram, geom, pageMap, output);
 		}
 	}
 	painter.end();
