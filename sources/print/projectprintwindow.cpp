@@ -18,11 +18,19 @@
 #include "projectprintwindow.h"
 
 #include "../diagram.h"
+#include "../pdf_links.h"
 #include "../qeticons.h"
 #include "../qetproject.h"
 #include "../qetversion.h"
+#include "../qetgraphicsitem/crossrefitem.h"
+#include "../qetgraphicsitem/dynamicelementtextitem.h"
+#include "../qetgraphicsitem/elementtextitemgroup.h"
 
 #include "ui_projectprintwindow.h"
+
+// Private Qt PDF engine for drawHyperlink() — not public API, stable since Qt4
+// Requires QT += gui-private in qelectrotech.pro
+#include <private/qpdf_p.h>
 
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0) // ### Qt 6: remove
 #	include <QDesktopWidget>
@@ -37,6 +45,11 @@
 #include <QPrintDialog>
 #include <QPrintPreviewWidget>
 #include <QScreen>
+#include <QFile>
+#include <QRegularExpression>
+#include <QMap>
+#include <QTimer>
+#include <QVector>
 
 /**
  * @brief ProjectPrintWindow::ProjectPrintWindow
@@ -214,13 +227,47 @@ void ProjectPrintWindow::requestPaint()
 		return;
 	}
 
+	// Build diagram -> first physical PDF page number map (1-based)
+	// Must be done before the print loop since page numbers depend on order
+	QMap<Diagram*, int> diagramPageMap;
+	{
+		int pageNum = 1;
+		for (auto diagram : selectedDiagram()) {
+			diagramPageMap.insert(diagram, pageNum);
+			// Each diagram may span multiple pages if not fit_page
+			if (!ui->m_fit_in_page_cb->isChecked()) {
+				auto option = exportProperties();
+				bool full_page = m_printer->fullPage();
+				int h = horizontalPagesCount(diagram, option, full_page);
+				int v = verticalPagesCount(diagram, option, full_page);
+				pageNum += h * v;
+			} else {
+				pageNum += 1;
+			}
+		}
+	}
+
 	bool first = true;
 	QPainter painter(m_printer);
+
+	// A real PDF export uses the QPdfEngine; the on-screen preview uses a
+	// preview paint engine. We only post-process when actually writing a PDF.
+	const bool pdfExport =
+		(m_printer->outputFormat() == QPrinter::PdfFormat)
+		&& (dynamic_cast<QPdfEngine*>(painter.paintEngine()) != nullptr);
+
 	for (auto diagram : selectedDiagram())
 	{
 		first ? first = false : m_printer->newPage();
-		printDiagram(diagram, ui->m_fit_in_page_cb->isChecked(), &painter, m_printer);
+		printDiagram(diagram, ui->m_fit_in_page_cb->isChecked(), &painter, m_printer, diagramPageMap);
 	}
+
+	// Note: do NOT call painter.end() or pdfConvertUriToGoTo() here.
+	// We are inside the paintRequested slot: the QPrintPreviewWidget still
+	// owns the paint cycle.  On macOS arm64 (Metal/CALayer compositor),
+	// closing the QPainter manually inside this slot leaves the backing
+	// store in an undefined state, producing a black screen after export.
+	// pdfConvertUriToGoTo() is deferred to print() via QTimer::singleShot(0).
 }
 
 /**
@@ -230,7 +277,7 @@ void ProjectPrintWindow::requestPaint()
  * @param fit_page
  * @param printer
  */
-void ProjectPrintWindow::printDiagram(Diagram *diagram, bool fit_page, QPainter *painter, QPrinter *printer)
+void ProjectPrintWindow::printDiagram(Diagram *diagram, bool fit_page, QPainter *painter, QPrinter *printer, const QMap<Diagram*, int> &diagramPageMap)
 {
 
 	////Prepare the print////
@@ -316,6 +363,65 @@ void ProjectPrintWindow::printDiagram(Diagram *diagram, bool fit_page, QPainter 
 				Qt::KeepAspectRatio);
 		}
 	}
+
+	////Inject PDF cross-reference links////
+	if (printer->outputFormat() == QPrinter::PdfFormat && fit_page) {
+		auto *pdfEngine = dynamic_cast<QPdfEngine*>(painter->paintEngine());
+		if (pdfEngine) {
+
+			// QGraphicsScene::render() fait save()/restore() : worldTransform()
+			// est revenu a l'identite ici. On reconstruit DONC explicitement la
+			// transform appliquee par :
+			//   diagram->render(painter, QRectF(), diagram_rect, KeepAspectRatio)
+			// cible vide => painter->viewport() ; source = diagram_rect ; centre.
+			const QRectF target = QRectF(painter->viewport());
+			const QRectF source = QRectF(diagram_rect); // meme source que render()
+
+			// render() ANCRE en haut-gauche (pas de centrage) :
+			//   translate(target.topLeft) . scale(s,s) . translate(-source.topLeft)
+			// On reproduit EXACTEMENT ca — surtout PAS de (target-source*s)/2.
+			const qreal s = qMin(target.width()  / source.width(),
+			                     target.height() / source.height());
+
+			QTransform fit;
+			fit.translate(target.x(), target.y());
+			fit.scale(s, s);
+			fit.translate(-source.x(), -source.y());   // scene -> pixels device
+
+			// IMPORTANT : QPdfEngine::drawHyperlink() applique lui-meme
+			// pageMatrix() (echelle 72/resolution + inversion de Y + marges).
+			// On lui passe donc le rectangle en PIXELS DEVICE, sans aucune
+			// conversion en points ni flip de notre cote.
+			const QRectF pageBounds(0, 0, target.width(), target.height());
+
+			// ---- Device-pixels -> PDF points, replicating QPdfEnginePrivate::pageMatrix()
+			// (same geometry for every page: same printer, page size and margins). ----
+			const qreal pt_scale = 72.0 / printer->resolution();
+			const qreal fullH_pt = printer->pageLayout().fullRectPoints().height();
+			const bool  fullPageMode =
+				(printer->pageLayout().mode() == QPageLayout::FullPageMode);
+			const QRect paintPx =
+				printer->pageLayout().paintRectPixels(printer->resolution());
+			auto devToPdf = [=](const QPointF &d) -> QPointF {
+				qreal dx = d.x(), dy = d.y();
+				if (!fullPageMode) { dx += paintPx.left(); dy += paintPx.top(); }
+				return QPointF(pt_scale * dx, fullH_pt - pt_scale * dy);
+			};
+
+			PdfLinks::PageGeometry geom;
+			geom.sceneToDevice = fit;
+			geom.target        = target;
+			geom.pageBounds    = pageBounds;
+			geom.devToPdf      = devToPdf;
+			geom.sourceRectOf  = [this](Diagram *dg) {
+				return QRectF(diagramRect(dg, exportProperties()));
+			};
+			PdfLinks::injectCrossRefLinks(
+				pdfEngine, diagram, geom, diagramPageMap,
+				printer->outputFileName());
+		}
+	}
+	////PDF links end////
 
 	////Print is finished, restore diagram and graphics item properties
 	for (auto view : diagram->views()) {
@@ -772,9 +878,29 @@ void ProjectPrintWindow::on_m_uncheck_all_clicked()
 
 void ProjectPrintWindow::print()
 {
-	m_preview->print();
+	const bool isPdf = (m_printer->outputFormat() == QPrinter::PdfFormat);
+	const QString pdfFile = isPdf ? m_printer->outputFileName() : QString();
+
+	m_preview->print();   // triggers requestPaint() synchronously; painter
+	                      // is created/destroyed inside that call
+
 	savePageSetupForCurrentPrinter();
-	this->close();
+
+	if (isPdf && !pdfFile.isEmpty()) {
+		// Defer post-processing and window close to the next event-loop
+		// iteration.  This lets the macOS arm64 Metal compositor finish
+		// compositing the backing store before the window is destroyed,
+		// which prevents the black screen observed on Apple Silicon under
+		// macOS Sequoia (QPrintPreviewWidget + CALayer timing issue).
+		QTimer::singleShot(0, this, [this, pdfFile]() {
+			// Convert URI link annotations into native internal GoTo/FitR
+			// actions so cross-references jump inside the document.
+			PdfLinks::convertUriToGoTo(pdfFile);
+			this->close();
+		});
+	} else {
+		this->close();
+	}
 }
 
 void ProjectPrintWindow::on_m_date_cb_userDateChanged(const QDate &date)

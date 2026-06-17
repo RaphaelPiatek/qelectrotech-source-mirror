@@ -29,6 +29,7 @@ set(QET_COMPONENTS
 set(QET_PRIVATE_LIBRARIES
   Qt::PrintSupport
   Qt::Gui
+  Qt::GuiPrivate   # Required for QPdfEngine::drawHyperlink (PDF internal links)
   Qt::Xml
   Qt::Svg
   Qt::Sql
@@ -106,6 +107,10 @@ set(QET_RES_FILES
   ${QET_DIR}/sources/ui/configpage/generalconfigurationpage.ui
   )
 set(QET_SRC_FILES
+  ${QET_DIR}/sources/cli_export.cpp
+  ${QET_DIR}/sources/cli_export.h
+  ${QET_DIR}/sources/pdf_links.cpp
+  ${QET_DIR}/sources/pdf_links.h
   ${QET_DIR}/sources/borderproperties.cpp
   ${QET_DIR}/sources/borderproperties.h
   ${QET_DIR}/sources/bordertitleblock.cpp
@@ -254,6 +259,8 @@ set(QET_SRC_FILES
   ${QET_DIR}/sources/diagramevent/diagrameventaddtext.h
   ${QET_DIR}/sources/diagramevent/diagrameventinterface.cpp
   ${QET_DIR}/sources/diagramevent/diagrameventinterface.h
+  ${QET_DIR}/sources/diagramevent/diagrameventaddmacro.cpp
+  ${QET_DIR}/sources/diagramevent/diagrameventaddmacro.h
 
   ${QET_DIR}/sources/dvevent/dveventinterface.cpp
   ${QET_DIR}/sources/dvevent/dveventinterface.h
@@ -497,6 +504,8 @@ set(QET_SRC_FILES
   ${QET_DIR}/sources/SearchAndReplace/ui/replacefoliowidget.h
   ${QET_DIR}/sources/SearchAndReplace/ui/searchandreplacewidget.cpp
   ${QET_DIR}/sources/SearchAndReplace/ui/searchandreplacewidget.h
+  ${QET_DIR}/sources/svg/qetsvg.cpp
+  ${QET_DIR}/sources/svg/qetsvg.h
 
   ${QET_DIR}/sources/titleblock/dimension.cpp
   ${QET_DIR}/sources/titleblock/dimension.h
@@ -712,6 +721,8 @@ set(QET_SRC_FILES
 
   ${QET_DIR}/sources/xml/terminalstripitemxml.cpp
   ${QET_DIR}/sources/xml/terminalstripitemxml.h
+  ${QET_DIR}/sources/xml/terminalstriplayoutpatternxml.cpp
+  ${QET_DIR}/sources/xml/terminalstriplayoutpatternxml.h
   )
 
 set(TS_FILES

@@ -91,6 +91,8 @@ QString QETApp::m_user_company_tbt_dir = QString();
 
 QString QETApp::m_user_custom_tbt_dir = QString();
 
+QString QETApp::m_user_macros_dir = QString();
+
 QETApp *QETApp::m_qetapp = nullptr;
 
 bool lang_is_set = false;
@@ -224,20 +226,20 @@ void QETApp::setLanguage(const QString &desired_language) {
 
 	// load translations for the QET application
 	// charge les traductions pour l'application QET
-	if (!qetTranslator.load("qet_" + desired_language, languages_path)) {
-		/* in case of failure,
-		 *  we fall back on the native channels for French
-		 * en cas d'echec,
-		 *  on retombe sur les chaines natives pour le francais
-		 */
-		if (desired_language != "fr") {
-			// use of the English version by default
-			// utilisation de la version anglaise par defaut
-			if(!qetTranslator.load("qet_en", languages_path))
-				qWarning() << "failed to load"
-						   << "qet_en" << languages_path << "(" << __FILE__
-						   << __LINE__ << __FUNCTION__ << ")";
-		}
+	// desired_language may be a full locale such as "pt_BR": try that exact
+	// translation, then the base language ("pt"), then fall back to English.
+	// French is the application's source language and needs no translation.
+	const QString base_language = desired_language.section('_', 0, 0);
+	bool loaded = qetTranslator.load("qet_" + desired_language, languages_path);
+	if (!loaded && base_language != desired_language)
+		loaded = qetTranslator.load("qet_" + base_language, languages_path);
+	if (!loaded && base_language != "fr") {
+		// use of the English version by default
+		// utilisation de la version anglaise par defaut
+		if(!qetTranslator.load("qet_en", languages_path))
+			qWarning() << "failed to load"
+					   << "qet_en" << languages_path << "(" << __FILE__
+					   << __LINE__ << __FUNCTION__ << ")";
 	}
 	qApp->installTranslator(&qetTranslator);
 
@@ -261,7 +263,11 @@ QString QETApp::langFromSetting()
 		QSettings settings;
 		system_language = settings.value("lang", "system").toString();
 		if(system_language == "system") {
-			system_language = QLocale::system().name().left(2);
+			// Keep the full locale (e.g. "pt_BR"), not just the base language
+			// ("pt"): QET ships regional translations (pt_BR, nl_BE, nl_NL) and
+			// truncating here loaded the wrong one. setLanguage() falls back to
+			// the base language when no regional translation exists.
+			system_language = QLocale::system().name();
 		}
 		lang_is_set = true;
 	}
@@ -724,6 +730,8 @@ void QETApp::resetCollectionsPath()
 	m_user_company_tbt_dir.clear();
 
 	m_user_custom_tbt_dir.clear();
+
+	m_user_macros_dir.clear();
 }
 
 /**
@@ -820,6 +828,38 @@ QString QETApp::customTitleBlockTemplatesDir()
 	}
 
 	return(dataDir() + "/titleblocks/");
+}
+
+/**
+ * @brief QETApp::userMacrosDir
+ * @return the path of the directory containing the user macros collection.
+ */
+QString QETApp::userMacrosDir()
+{
+	if (m_user_macros_dir.isEmpty())
+	{
+		QSettings settings;
+		QString path = settings.value(
+			"elements-collections/macros-path",
+			"default").toString();
+			if (path != "default" && !path.isEmpty())
+			{
+				QDir dir(path);
+				if (dir.exists())
+				{
+					m_user_macros_dir = path;
+					return m_user_macros_dir;
+				}
+			}
+			else {
+				m_user_macros_dir = "default";
+			}
+	}
+	else if (m_user_macros_dir != "default") {
+		return m_user_macros_dir;
+	}
+
+	return(dataDir() + "/macros/");
 }
 
 /**
@@ -938,6 +978,8 @@ QString QETApp::realPath(const QString &sym_path) {
 		directory = commonElementsDir();
 	} else if (sym_path.startsWith("company://")) {
 		directory = companyElementsDir();
+	} else if (sym_path.startsWith("macros://")) {
+		directory = userMacrosDir();
 	} else if (sym_path.startsWith("company://")) {
 		directory = companyElementsDir();
 	} else if (sym_path.startsWith("custom://")) {
@@ -976,6 +1018,7 @@ QString QETApp::symbolicPath(const QString &real_path) {
 	QString commond = commonElementsDir();
 	QString companyd = companyElementsDir();
 	QString customd = customElementsDir();
+	QString macrosd = userMacrosDir();
 	QString chemin;
 	// analyzes the file path passed in parameter
 	// analyse le chemin de fichier passe en parametre
@@ -987,6 +1030,10 @@ QString QETApp::symbolicPath(const QString &real_path) {
 		chemin = "company://"
 				+ real_path.right(
 					real_path.length() - companyd.length());
+	} else if (real_path.startsWith(macrosd)) {
+		chemin = "macros://"
+		+ real_path.right(
+			real_path.length() - macrosd.length());
 	} else if (real_path.startsWith(customd)) {
 		chemin = "custom://"
 				+ real_path.right(
@@ -1185,7 +1232,21 @@ QString QETApp::languagesPath()
 	 * en l'absence d'option de compilation, on utilise le dossier lang,
 	 *  situe a cote du binaire executable
 	 */
-	return(QCoreApplication::applicationDirPath() + "/lang/");
+	{
+		const QString bin_dir = QCoreApplication::applicationDirPath();
+		const QString next_to_bin = bin_dir + "/lang/";
+		// Some packagings (notably the Windows installer) put the binary in a
+		// "bin" subfolder while "lang" sits beside it (../lang). Fall back to
+		// that layout when the folder next to the binary is absent, so the
+		// translations are found without a --lang-dir argument. See issue #86.
+		if (!QDir(next_to_bin).exists()) {
+			const QString sibling_of_bin =
+				QDir::cleanPath(bin_dir + "/../lang") + "/";
+			if (QDir(sibling_of_bin).exists())
+				return(sibling_of_bin);
+		}
+		return(next_to_bin);
+	}
 #else
 	#ifndef QET_LANG_PATH_RELATIVE_TO_BINARY_PATH
 		/* the compilation option represents
@@ -2211,6 +2272,10 @@ void QETApp::initConfiguration()
 	QDir custom_tbt_dir(QETApp::customTitleBlockTemplatesDir());
 	if (!custom_tbt_dir.exists())
 		custom_tbt_dir.mkpath(QETApp::customTitleBlockTemplatesDir());
+
+	QDir macros_dir(QETApp::userMacrosDir());
+	if (!macros_dir.exists())
+		macros_dir.mkpath(QETApp::userMacrosDir());
 
 	/* recent files
 	 * note:

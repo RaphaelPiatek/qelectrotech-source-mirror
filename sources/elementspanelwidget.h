@@ -47,6 +47,7 @@ class ElementsPanelWidget : public QWidget {
 		*prj_prop_diagram,
 		*prj_add_diagram,
 		*prj_del_diagram,
+		*prj_duplicate_diagram,
 		*prj_move_diagram_up,
 		*prj_move_diagram_top,
 		*prj_move_diagram_down,
@@ -69,13 +70,14 @@ class ElementsPanelWidget : public QWidget {
 	void requestForProjectPropertiesEdition(QETProject *);
 	void requestForDiagramPropertiesEdition(Diagram *);
 	void requestForDiagramDeletion(Diagram *);
-	void requestForDiagramMoveUp(Diagram *);
-	void requestForDiagramMoveDown(Diagram *);
-	void requestForDiagramMoveUpTop(Diagram *);
-	void requestForDiagramMoveUpx10(Diagram *);
-	void requestForDiagramMoveUpx100(Diagram *);
-	void requestForDiagramMoveDownx10(Diagram *);
-	void requestForDiagramMoveDownx100(Diagram *);
+	void requestForDiagramsDeletion(const QList<Diagram *> &diagrams);
+	void requestForDiagramMoveUp(const QList<Diagram *> &diagrams);
+	void requestForDiagramMoveDown(const QList<Diagram *> &diagrams);
+	void requestForDiagramMoveUpTop(const QList<Diagram *> &diagrams);
+	void requestForDiagramMoveUpx10(const QList<Diagram *> &diagrams);
+	void requestForDiagramMoveUpx100(const QList<Diagram *> &diagrams);
+	void requestForDiagramMoveDownx10(const QList<Diagram *> &diagrams);
+	void requestForDiagramMoveDownx100(const QList<Diagram *> &diagrams);
 	
 	public slots:
 	void openDirectoryForSelectedItem();
@@ -87,6 +89,7 @@ class ElementsPanelWidget : public QWidget {
 	void editDiagramProperties();
 	void newDiagram();
 	void deleteDiagram();
+	void duplicateDiagram();
 	void moveDiagramUp();
 	void moveDiagramDown();
 	void moveDiagramUpTop();

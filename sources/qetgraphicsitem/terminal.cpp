@@ -754,6 +754,15 @@ QString Terminal::name() const
 }
 
 /**
+	@brief Terminal::terminalType
+	@return the type of this terminal (Generic, Inner, Outer, No, Nc, Common)
+*/
+TerminalData::Type Terminal::terminalType() const
+{
+	return d->m_type;
+}
+
+/**
 	@brief Conductor::relatedPotentialTerminal
 	Return terminal at the same potential from the same
 	parent element of terminal.
@@ -779,6 +788,12 @@ QList<Terminal *> relatedPotentialTerminal (
 	// If terminal parent element is a Terminal element.
 	else if (terminal -> parentElement() -> linkType() & Element::Terminale)
 	{
+		// English: Check if the user activated the potential isolation checkbox for this terminal
+		if (terminal->parentElement()->elementInformations().value(QStringLiteral("potential_isolating")).toString() == QLatin1String("true")) {
+			// English: Potential is isolated. Return an empty list so it does not propagate to the other side.
+			return QList<Terminal *>();
+		}
+
 		QList <Terminal *> terminals = terminal->parentElement()->terminals();
 		terminals.removeAll(const_cast<Terminal *>(terminal));
 		return terminals;

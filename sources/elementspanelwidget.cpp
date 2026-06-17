@@ -16,7 +16,6 @@
 	along with QElectroTech.  If not, see <http://www.gnu.org/licenses/>.
 */
 #include "elementspanelwidget.h"
-
 #include "diagram.h"
 #include "editor/ui/qetelementeditor.h"
 #include "elementscategoryeditor.h"
@@ -24,6 +23,9 @@
 #include "qeticons.h"
 #include "qetproject.h"
 #include "titleblock/templatedeleter.h"
+#include <QFileInfo>
+#include <QMessageBox>
+#include "qetgraphicsitem/element.h"
 
 /*
 	When the ENABLE_PANEL_WIDGET_DND_CHECKS flag is set, the panel
@@ -57,7 +59,8 @@ ElementsPanelWidget::ElementsPanelWidget(QWidget *parent) : QWidget(parent) {
 	prj_close                = new QAction(QET::Icons::DocumentClose,          tr("Fermer ce projet"),                    this);
 	prj_edit_prop            = new QAction(QET::Icons::DialogInformation,      tr("Propriétés du projet"),          this);
 	prj_prop_diagram         = new QAction(QET::Icons::DialogInformation,      tr("Propriétés du folio"),       this);
-	prj_add_diagram          = new QAction(QET::Icons::DiagramAdd,             tr("Ajouter un folio"),                this);
+	prj_add_diagram          = new QAction(QET::Icons::DiagramAdd,              tr("Ajouter un folio"),                this);
+	prj_duplicate_diagram   = new QAction(QET::Icons::IC_CopyFile,              tr("Copier et coller"),               this);
 	prj_del_diagram          = new QAction(QET::Icons::DiagramDelete,          tr("Supprimer ce folio"),              this);
 	prj_move_diagram_up      = new QAction(QET::Icons::GoUp,                   tr("Remonter ce folio"),               this);
 	prj_move_diagram_down    = new QAction(QET::Icons::GoDown,                 tr("Abaisser ce folio"),               this);
@@ -98,6 +101,7 @@ ElementsPanelWidget::ElementsPanelWidget(QWidget *parent) : QWidget(parent) {
 	connect(prj_prop_diagram,      SIGNAL(triggered()), this,           SLOT(editDiagramProperties()));
 	connect(prj_add_diagram,       SIGNAL(triggered()), this,           SLOT(newDiagram()));
 	connect(prj_del_diagram,       SIGNAL(triggered()), this,           SLOT(deleteDiagram()));
+	connect(prj_duplicate_diagram, SIGNAL(triggered()), this,           SLOT(duplicateDiagram()));
 	connect(prj_move_diagram_up,   SIGNAL(triggered()), this,           SLOT(moveDiagramUp()));
 	connect(prj_move_diagram_down, SIGNAL(triggered()), this,           SLOT(moveDiagramDown()));
 	connect(prj_move_diagram_top,  SIGNAL(triggered()), this,           SLOT(moveDiagramUpTop()));
@@ -152,6 +156,11 @@ void ElementsPanelWidget::openDirectoryForSelectedItem()
 	if (QTreeWidgetItem *qtwi = elements_panel -> currentItem()) {
 		QString dir_path = elements_panel -> dirPathForItem(qtwi);
 		if (!dir_path.isEmpty()) {
+			QFileInfo fileInfo(dir_path);
+			// Wenn der Pfad auf eine Datei (z.B. Makro) zeigt, isoliere den Ordnerpfad
+			if (fileInfo.isFile()) {
+				dir_path = fileInfo.absolutePath();
+			}
 			QDesktopServices::openUrl(QUrl::fromLocalFile(dir_path));
 		}
 	}
@@ -236,85 +245,134 @@ void ElementsPanelWidget::newDiagram()
 }
 
 /**
-	Emet le signal requestForDiagramDeletion avec le schema selectionne
-*/
+ * Emet le signal requestForDiagramsDeletion avec les schemas selectionnes
+ */
 void ElementsPanelWidget::deleteDiagram()
 {
-	if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-		emit(requestForDiagramDeletion(selected_diagram));
-		elements_panel->reload();
+	QList<Diagram *> diagrams_to_delete = elements_panel->selectedDiagrams();
+
+	if (diagrams_to_delete.isEmpty()) return;
+
+	emit(requestForDiagramsDeletion(diagrams_to_delete));
+
+	elements_panel->reload();
+}
+/**
+ * Emits the requestForDiagramMoveUpTop signal with all selected diagrams.
+ */
+void ElementsPanelWidget::moveDiagramUpTop() {
+	QList<Diagram *> diagrams_to_move = elements_panel->selectedDiagrams();
+	if (diagrams_to_move.isEmpty()) return;
+
+	// Emit the entire list at once
+	emit requestForDiagramMoveUpTop(diagrams_to_move);
+
+	// Clear messy tree selection caused by moving items, then restore clean selection
+	elements_panel->clearSelection();
+	for (Diagram *d : diagrams_to_move) {
+		if (auto item = elements_panel->getItemForDiagram(d)) item->setSelected(true);
 	}
 }
 
 /**
-	Emet le signal requestForDiagramMoveUpTop avec le schema selectionne
-+*/
-void ElementsPanelWidget::moveDiagramUpTop()
-{
-	if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-		emit(requestForDiagramMoveUpTop(selected_diagram));
-	}
-}
+ * Emits the requestForDiagramMoveUp signal with all selected diagrams.
+ */
+void ElementsPanelWidget::moveDiagramUp() {
+	QList<Diagram *> diagrams_to_move = elements_panel->selectedDiagrams();
+	if (diagrams_to_move.isEmpty()) return;
 
+	// Emit the entire list at once
+	emit requestForDiagramMoveUp(diagrams_to_move);
 
-
-/**
-	Emet le signal requestForDiagramMoveUp avec le schema selectionne
-*/
-void ElementsPanelWidget::moveDiagramUp()
-{
-	if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-		emit(requestForDiagramMoveUp(selected_diagram));
+	// Clear messy tree selection caused by moving items, then restore clean selection
+	elements_panel->clearSelection();
+	for (Diagram *d : diagrams_to_move) {
+		if (auto item = elements_panel->getItemForDiagram(d)) item->setSelected(true);
 	}
 }
 
 /**
-	Emet le signal requestForDiagramMoveDown avec le schema selectionne
-*/
-void ElementsPanelWidget::moveDiagramDown()
-{
-	if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-		emit(requestForDiagramMoveDown(selected_diagram));
+ * Emits the requestForDiagramMoveDown signal with all selected diagrams.
+ */
+void ElementsPanelWidget::moveDiagramDown() {
+	QList<Diagram *> diagrams_to_move = elements_panel->selectedDiagrams();
+	if (diagrams_to_move.isEmpty()) return;
+
+	// Emit the entire list at once
+	emit requestForDiagramMoveDown(diagrams_to_move);
+
+	// Clear messy tree selection caused by moving items, then restore clean selection
+	elements_panel->clearSelection();
+	for (Diagram *d : diagrams_to_move) {
+		if (auto item = elements_panel->getItemForDiagram(d)) item->setSelected(true);
 	}
 }
 
 /**
-	Emet le signal requestForDiagramMoveUpx10 avec le schema selectionne
-*/
-void ElementsPanelWidget::moveDiagramUpx10()
-{
-	if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-		emit(requestForDiagramMoveUpx10(selected_diagram));
+ * Emits the requestForDiagramMoveUpx10 signal with all selected diagrams.
+ */
+void ElementsPanelWidget::moveDiagramUpx10() {
+	QList<Diagram *> diagrams_to_move = elements_panel->selectedDiagrams();
+	if (diagrams_to_move.isEmpty()) return;
+
+	// Emit the entire list at once
+	emit requestForDiagramMoveUpx10(diagrams_to_move);
+
+	// Clear messy tree selection caused by moving items, then restore clean selection
+	elements_panel->clearSelection();
+	for (Diagram *d : diagrams_to_move) {
+		if (auto item = elements_panel->getItemForDiagram(d)) item->setSelected(true);
 	}
 }
 
 /**
-	Emet le signal requestForDiagramMoveUpx100 avec le schema selectionne
-*/
-void ElementsPanelWidget::moveDiagramUpx100()
-{
-	if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-		emit(requestForDiagramMoveUpx100(selected_diagram));
+ * Emits the requestForDiagramMoveUpx100 signal with all selected diagrams.
+ */
+void ElementsPanelWidget::moveDiagramUpx100() {
+	QList<Diagram *> diagrams_to_move = elements_panel->selectedDiagrams();
+	if (diagrams_to_move.isEmpty()) return;
+
+	// Emit the entire list at once
+	emit requestForDiagramMoveUpx100(diagrams_to_move);
+
+	// Clear messy tree selection caused by moving items, then restore clean selection
+	elements_panel->clearSelection();
+	for (Diagram *d : diagrams_to_move) {
+		if (auto item = elements_panel->getItemForDiagram(d)) item->setSelected(true);
 	}
 }
 
 /**
-	Emet le signal requestForDiagramMoveDownx10 avec le schema selectionne
-*/
-void ElementsPanelWidget::moveDiagramDownx10()
-{
-	if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-		emit(requestForDiagramMoveDownx10(selected_diagram));
+ * Emits the requestForDiagramMoveDownx10 signal with all selected diagrams.
+ */
+void ElementsPanelWidget::moveDiagramDownx10() {
+	QList<Diagram *> diagrams_to_move = elements_panel->selectedDiagrams();
+	if (diagrams_to_move.isEmpty()) return;
+
+	// Emit the entire list at once
+	emit requestForDiagramMoveDownx10(diagrams_to_move);
+
+	// Clear messy tree selection caused by moving items, then restore clean selection
+	elements_panel->clearSelection();
+	for (Diagram *d : diagrams_to_move) {
+		if (auto item = elements_panel->getItemForDiagram(d)) item->setSelected(true);
 	}
 }
 
 /**
-	Emet le signal requestForDiagramMoveDownx100 avec le schema selectionne
-*/
-void ElementsPanelWidget::moveDiagramDownx100()
-{
-	if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-		emit(requestForDiagramMoveDownx100(selected_diagram));
+ * Emits the requestForDiagramMoveDownx100 signal with all selected diagrams.
+ */
+void ElementsPanelWidget::moveDiagramDownx100() {
+	QList<Diagram *> diagrams_to_move = elements_panel->selectedDiagrams();
+	if (diagrams_to_move.isEmpty()) return;
+
+	// Emit the entire list at once
+	emit requestForDiagramMoveDownx100(diagrams_to_move);
+
+	// Clear messy tree selection caused by moving items, then restore clean selection
+	elements_panel->clearSelection();
+	for (Diagram *d : diagrams_to_move) {
+		if (auto item = elements_panel->getItemForDiagram(d)) item->setSelected(true);
 	}
 }
 
@@ -372,21 +430,36 @@ void ElementsPanelWidget::updateButtons()
 		bool is_writable = !(elements_panel -> selectedProject() -> isReadOnly());
 		prj_add_diagram -> setEnabled(is_writable);
 	} else if (current_type == QET::Diagram) {
-		Diagram    *selected_diagram         = elements_panel -> selectedDiagram();
-		QETProject *selected_diagram_project = selected_diagram -> project();
+		// Fetch ALL selected diagrams instead of just one
+		QList<Diagram *> selected_diagrams = elements_panel -> selectedDiagrams();
 
-		bool is_writable           = !(selected_diagram_project -> isReadOnly());
-		int project_diagrams_count = selected_diagram_project -> diagrams().count();
-		int diagram_position       = selected_diagram_project -> diagrams().indexOf(selected_diagram);
+		if (!selected_diagrams.isEmpty()) {
+			QETProject *selected_diagram_project = selected_diagrams.first() -> project();
+			bool is_writable           = !(selected_diagram_project -> isReadOnly());
+			int project_diagrams_count = selected_diagram_project -> diagrams().count();
 
-		prj_del_diagram       -> setEnabled(is_writable);
-		prj_move_diagram_up   -> setEnabled(is_writable && diagram_position > 0);
-		prj_move_diagram_down -> setEnabled(is_writable && diagram_position < project_diagrams_count - 1);
-		prj_move_diagram_top   -> setEnabled(is_writable && diagram_position > 0);
-		prj_move_diagram_upx10   -> setEnabled(is_writable && diagram_position > 10);
-		prj_move_diagram_upx100   -> setEnabled(is_writable && diagram_position > 100);
-		prj_move_diagram_downx10 -> setEnabled(is_writable && diagram_position < project_diagrams_count - 10);
-		prj_move_diagram_downx100 -> setEnabled(is_writable && diagram_position < project_diagrams_count - 100);
+			// Find the highest (min) and lowest (max) index among the selection
+			int min_position = project_diagrams_count;
+			int max_position = -1;
+
+			for (Diagram *diagram : selected_diagrams) {
+				int pos = selected_diagram_project -> diagrams().indexOf(diagram);
+				if (pos < min_position) min_position = pos;
+				if (pos > max_position) max_position = pos;
+			}
+
+			prj_del_diagram           -> setEnabled(is_writable);
+			prj_duplicate_diagram     -> setEnabled(is_writable);
+			prj_move_diagram_up        -> setEnabled(is_writable && min_position > 0);
+			prj_move_diagram_down     -> setEnabled(is_writable && max_position < project_diagrams_count - 1);
+			prj_move_diagram_top      -> setEnabled(is_writable && min_position > 0);
+
+			// Adjusted to >= to allow exactly 10 or 100 steps if space permits
+			prj_move_diagram_upx10    -> setEnabled(is_writable && min_position > 10);
+			prj_move_diagram_upx100   -> setEnabled(is_writable && min_position > 100);
+			prj_move_diagram_downx10  -> setEnabled(is_writable && max_position < project_diagrams_count - 10);
+			prj_move_diagram_downx100 -> setEnabled(is_writable && max_position < project_diagrams_count - 100);
+		}
 	} else if (current_type == QET::TitleBlockTemplatesCollection) {
 		TitleBlockTemplateLocation location = elements_panel -> templateLocationForItem(current_item);
 		tbt_add    -> setEnabled(!location.isReadOnly());
@@ -431,6 +504,7 @@ void ElementsPanelWidget::handleContextMenu(const QPoint &pos) {
 		case QET::Diagram:
 			context_menu -> addAction(prj_prop_diagram);
 			context_menu -> addAction(prj_del_diagram);
+			context_menu -> addAction(prj_duplicate_diagram);
 			context_menu -> addAction(prj_move_diagram_top);
 			context_menu -> addAction(prj_move_diagram_upx10);
 			context_menu -> addAction(prj_move_diagram_upx100);
@@ -469,62 +543,110 @@ void ElementsPanelWidget::filterEdited(const QString &next_text) {
 }
 
 /**
-	Treat key press event inside elements panel widget
-*/
-void ElementsPanelWidget::keyPressEvent   (QKeyEvent *e) {
-	switch(e -> key()) {
-				case Qt::Key_Delete: //delete diagram through elements panel widget
-					if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-						emit(requestForDiagramDeletion(selected_diagram));
-					}
-					break;
-					case Qt::Key_F3:
-					if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-						elements_panel->setSelectedItem(elements_panel->getItemForDiagram(selected_diagram));
-						emit(requestForDiagramMoveUp(selected_diagram));
-					}
-					break;
-					case Qt::Key_F4:
-					if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-						elements_panel->setSelectedItem(elements_panel->getItemForDiagram(selected_diagram));
-						emit(requestForDiagramMoveDown(selected_diagram));
-					}
-					break;
-					case Qt::Key_F5:
-					if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-						elements_panel->setSelectedItem(elements_panel->getItemForDiagram(selected_diagram));
-						emit(requestForDiagramMoveUpTop(selected_diagram));
-					}
-					
-					break;
-					case Qt::Key_F6:
-					if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-						elements_panel->setSelectedItem(elements_panel->getItemForDiagram(selected_diagram));
-						emit(requestForDiagramMoveDownx10(selected_diagram));
-					}
-					
-					break;
-					case Qt::Key_F7:
-					if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-						elements_panel->setSelectedItem(elements_panel->getItemForDiagram(selected_diagram));
-						emit(requestForDiagramMoveDownx100(selected_diagram));
-					}
-					
-					
-					break;
-					case Qt::Key_F8:
-					if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-						elements_panel->setSelectedItem(elements_panel->getItemForDiagram(selected_diagram));
-						emit(requestForDiagramMoveUpx10(selected_diagram));
-					}					
-					
-					break;
-					case Qt::Key_F9:
-					if (Diagram *selected_diagram = elements_panel -> selectedDiagram()) {
-						elements_panel->setSelectedItem(elements_panel->getItemForDiagram(selected_diagram));
-						emit(requestForDiagramMoveUpx100(selected_diagram));
-					}
-					break;
-				}
-	return;
+ * Treat key press event inside elements panel widget
+ */
+/**
+ * Treat key press event inside elements panel widget.
+ * Respects the enabled/disabled state of the corresponding QActions.
+ */
+void ElementsPanelWidget::keyPressEvent(QKeyEvent *e) {
+	switch(e->key()) {
+		case Qt::Key_Delete:
+			if (prj_del_diagram && prj_del_diagram->isEnabled()) {
+				deleteDiagram();
+			}
+			break;
+		case Qt::Key_F3:
+			if (prj_move_diagram_up && prj_move_diagram_up->isEnabled()) {
+				moveDiagramUp();
+			}
+			break;
+		case Qt::Key_F4:
+			if (prj_move_diagram_down && prj_move_diagram_down->isEnabled()) {
+				moveDiagramDown();
+			}
+			break;
+		case Qt::Key_F5:
+			if (prj_move_diagram_top && prj_move_diagram_top->isEnabled()) {
+				moveDiagramUpTop();
+			}
+			break;
+		case Qt::Key_F6:
+			if (prj_move_diagram_downx10 && prj_move_diagram_downx10->isEnabled()) {
+				moveDiagramDownx10();
+			}
+			break;
+		case Qt::Key_F7:
+			if (prj_move_diagram_downx100 && prj_move_diagram_downx100->isEnabled()) {
+				moveDiagramDownx100();
+			}
+			break;
+		case Qt::Key_F8:
+			if (prj_move_diagram_upx10 && prj_move_diagram_upx10->isEnabled()) {
+				moveDiagramUpx10();
+			}
+			break;
+		case Qt::Key_F9:
+			if (prj_move_diagram_upx100 && prj_move_diagram_upx100->isEnabled()) {
+				moveDiagramUpx100();
+			}
+			break;
+		default:
+			// Pass unhandled key events to the base class
+			QWidget::keyPressEvent(e);
+			break;
+	}
+}
+
+/**
+ * Duplicates the selected folios (pages) along with their content
+ * and properties, and cleanly resolves cross-references.
+ */
+void ElementsPanelWidget::duplicateDiagram()
+{
+	QList<Diagram *> diagrams_to_duplicate = elements_panel->selectedDiagrams();
+	if (diagrams_to_duplicate.isEmpty()) return;
+
+	QETProject *project = diagrams_to_duplicate.first()->project();
+	if (!project || project->isReadOnly()) return;
+
+	for (Diagram *source_diagram : diagrams_to_duplicate) {
+
+		Diagram *new_diagram = project->addNewDiagram();
+		if (!new_diagram) continue;
+
+		QString template_name = source_diagram->border_and_titleblock.titleBlockTemplateName();
+		new_diagram->setTitleBlockTemplate(template_name);
+
+		TitleBlockProperties tbp = source_diagram->border_and_titleblock.exportTitleBlock();
+		new_diagram->border_and_titleblock.importTitleBlock(tbp);
+
+		BorderProperties bp = source_diagram->border_and_titleblock.exportBorder();
+		new_diagram->border_and_titleblock.importBorder(bp);
+
+		for (QGraphicsItem *item : source_diagram->items()) {
+			if (Element *elmt = dynamic_cast<Element *>(item)) {
+				source_diagram->correctTextPos(elmt);
+			}
+		}
+
+		QDomDocument doc = source_diagram->toXml();
+		QDomElement diagram_elmt = doc.documentElement();
+
+		for (QGraphicsItem *item : source_diagram->items()) {
+			if (Element *elmt = dynamic_cast<Element *>(item)) {
+				source_diagram->restoreText(elmt);
+			}
+		}
+
+		new_diagram->fromXml(diagram_elmt, QPointF(0, 0), false, nullptr);
+
+		for (QGraphicsItem *item : new_diagram->items()) {
+			if (Element *elmt = dynamic_cast<Element *>(item)) {
+				new_diagram->restoreText(elmt);
+			}
+		}
+	}
+
+	elements_panel->reload();
 }
