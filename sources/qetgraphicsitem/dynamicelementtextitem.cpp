@@ -30,6 +30,7 @@
 #include <QDomDocument>
 #include <QDomElement>
 #include <QGraphicsSceneMouseEvent>
+#include <QSet>
 
 /**
 	@brief DynamicElementTextItem::DynamicElementTextItem
@@ -891,21 +892,45 @@ void DynamicElementTextItem::reportChanged()
 	}
 	
 	bool text_have_label = false;
-	
+
 	if((textFrom() == ElementInfo && m_info_name == "label") ||
 	   (textFrom() == CompositeText && m_composite_text.contains("%{label}")))
 		text_have_label = true;
-	
+
+		//Whether this text needs the BMK/terminal of the real target reached
+		//by crossing the folio report link (either as a single info field, or
+		//as a variable used in a composite text)
+	const bool text_have_target =
+			(textFrom() == ElementInfo &&
+			 (m_info_name == QETInformation::REPORT_TARGET_LABEL ||
+			  m_info_name == QETInformation::REPORT_TARGET_TERMINAL)) ||
+			(textFrom() == CompositeText &&
+			 (m_composite_text.contains(QLatin1String("%{target_label}")) ||
+			  m_composite_text.contains(QLatin1String("%{target_terminal}"))));
+
 	if(text_have_label)
 		removeConnectionForReportFormula(m_report_formula);
-	
+
 	m_other_report.clear();
 	if(!m_parent_element.data()->linkedElements().isEmpty())
 		m_other_report = m_parent_element.data()->linkedElements().first();
-		
+
+		//Keep the connection to the linked report's terminal up to date,
+		//so adding/removing a wire on the other folio refreshes the target variables.
+	for (const QMetaObject::Connection &c : m_other_report_terminal_con)
+		disconnect(c);
+	m_other_report_terminal_con.clear();
+
+	if (text_have_target && m_other_report && !m_other_report.data()->terminals().isEmpty())
+	{
+		Terminal *other_terminal = m_other_report.data()->terminals().first();
+		m_other_report_terminal_con << connect(other_terminal, &Terminal::conductorWasAdded, this, &DynamicElementTextItem::conductorPropertiesChanged);
+		m_other_report_terminal_con << connect(other_terminal, &Terminal::conductorWasRemoved, this, &DynamicElementTextItem::conductorPropertiesChanged);
+	}
+
 		//Because linked report was changed, we ensure there is a conductor watched
 	setPotentialConductor();
-	
+
 	if(text_have_label)
 	{
 		setConnectionForReportFormula(m_report_formula);
@@ -1196,6 +1221,10 @@ void DynamicElementTextItem::conductorPropertiesChanged()
 				setPlainText(m_watched_conductor? m_watched_conductor.data()->properties().m_wire_color : "");
 			else if (m_info_name == QETInformation::COND_SECTION)
 				setPlainText(m_watched_conductor? m_watched_conductor.data()->properties().m_wire_section : "");
+			else if (m_info_name == QETInformation::REPORT_TARGET_LABEL)
+				setPlainText(reportTargetInfo().first);
+			else if (m_info_name == QETInformation::REPORT_TARGET_TERMINAL)
+				setPlainText(reportTargetInfo().second);
 		}
 		else if (m_text_from == CompositeText) {
 			setPlainText(reportReplacedCompositeText());
@@ -1254,9 +1283,71 @@ QString DynamicElementTextItem::reportReplacedCompositeText() const
 			if(string.contains("%{conductor_section}"))
 				string.replace("%{conductor_section}", "");
 		}
+
+		if (string.contains("%{target_label}") || string.contains("%{target_terminal}"))
+		{
+			const QPair<QString, QString> target = reportTargetInfo();
+			if (string.contains("%{target_label}"))
+				string.replace("%{target_label}", target.first);
+			if (string.contains("%{target_terminal}"))
+				string.replace("%{target_terminal}", target.second);
+		}
 	}
-	
+
 	return string;
+}
+
+/**
+	@brief DynamicElementTextItem::reportTargetInfo
+	This function is only used when the parent element of this text is a folio report.
+	Follow the conductor connected to the linked report element (m_other_report)
+	up to the real (non report) element it leads to, transparently crossing
+	further folio report links if the wire continues to another folio.
+	@return a pair holding the label (BMK) and the terminal name (Anschluss)
+	of the real target, or two empty strings if no target can be resolved.
+*/
+QPair<QString, QString> DynamicElementTextItem::reportTargetInfo() const
+{
+	if (m_other_report.isNull())
+		return {QString(), QString()};
+
+	QSet<const Element *> visited;
+	if (m_parent_element)
+		visited.insert(m_parent_element.data());
+
+	Element *current = m_other_report.data();
+
+	while (current && !visited.contains(current))
+	{
+		visited.insert(current);
+
+		if (current->terminals().isEmpty())
+			return {QString(), QString()};
+
+		Terminal *from_terminal = current->terminals().first();
+		if (from_terminal->conductors().isEmpty())
+			return {QString(), QString()};
+
+		Conductor *cndr = from_terminal->conductors().first();
+		Terminal *far_terminal = (cndr->terminal1 == from_terminal) ? cndr->terminal2 : cndr->terminal1;
+		if (!far_terminal || !far_terminal->parentElement())
+			return {QString(), QString()};
+
+		Element *far_element = far_terminal->parentElement();
+
+			//The wire continues to another folio report, follow it there
+		if (far_element->linkType() & Element::AllReport)
+		{
+			if (far_element->linkedElements().isEmpty())
+				return {QString(), QString()};
+			current = far_element->linkedElements().first();
+			continue;
+		}
+
+		return {far_element->actualLabel(), far_terminal->name()};
+	}
+
+	return {QString(), QString()};
 }
 
 /**

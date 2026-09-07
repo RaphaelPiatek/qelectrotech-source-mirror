@@ -89,7 +89,9 @@ QStringList QETInformation::folioReportInfoKeys()
 						 COND_FUNCTION,
 						 COND_TENSION_PROTOCOL,
 						 COND_COLOR,
-						 COND_SECTION };
+						 COND_SECTION,
+						 REPORT_TARGET_LABEL,
+						 REPORT_TARGET_TERMINAL };
 
 	return list;
 }
@@ -101,6 +103,8 @@ QHash<QString, QString> QETInformation::folioReportInfoKeyToVar()
 	H_.insert(COND_TENSION_PROTOCOL, infoToVar(COND_TENSION_PROTOCOL));
 	H_.insert(COND_COLOR,            infoToVar(COND_COLOR));
 	H_.insert(COND_SECTION,          infoToVar(COND_SECTION));
+	H_.insert(REPORT_TARGET_LABEL,    infoToVar(REPORT_TARGET_LABEL));
+	H_.insert(REPORT_TARGET_TERMINAL, infoToVar(REPORT_TARGET_TERMINAL));
 
 	return H_;
 }
@@ -268,6 +272,8 @@ QString QETInformation::translatedInfoKey(const QString &info)
 	else if (info == COND_TENSION_PROTOCOL)            return QObject::tr("Tension / Protocole");
 	else if (info == COND_COLOR)                       return QObject::tr("Couleur du fil");
 	else if (info == COND_SECTION)                     return QObject::tr("Section du fil");
+	else if (info == REPORT_TARGET_LABEL)              return QObject::tr("Label de la cible");
+	else if (info == REPORT_TARGET_TERMINAL)           return QObject::tr("Borne de la cible");
 	else if (info == COND_TEXT)                        return QObject::tr("Texte");
 	else if (info == COND_FORMULA)                     return QObject::tr("Formule du texte");
 	else if (info == ELMT_AUX1)                        return QObject::tr("Bloc auxiliaire 1");

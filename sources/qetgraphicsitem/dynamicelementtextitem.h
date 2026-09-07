@@ -22,6 +22,7 @@
 #include "diagramtextitem.h"
 #include "element.h"
 
+#include <QPair>
 #include <QPointer>
 #include <QUuid>
 
@@ -141,6 +142,7 @@ class DynamicElementTextItem : public DiagramTextItem
 		void setPotentialConductor();
 		void conductorPropertiesChanged();
 		QString reportReplacedCompositeText() const;
+		QPair<QString, QString> reportTargetInfo() const;
 		void zoomToLinkedElement();
 		void parentElementRotationChanged();
 		void thisRotationChanged();
@@ -162,7 +164,8 @@ class DynamicElementTextItem : public DiagramTextItem
 		QMetaObject::Connection m_report_formula_con;
 		QList<QMetaObject::Connection>
 		m_formula_connection,
-		m_update_slave_Xref_connection;
+		m_update_slave_Xref_connection,
+		m_other_report_terminal_con;
 		QColor m_user_color;
 		bool
 		m_frame = false,
