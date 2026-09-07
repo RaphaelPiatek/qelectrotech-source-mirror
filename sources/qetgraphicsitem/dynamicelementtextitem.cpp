@@ -1344,7 +1344,15 @@ QPair<QString, QString> DynamicElementTextItem::reportTargetInfo() const
 			continue;
 		}
 
-		return {far_element->actualLabel(), far_terminal->name()};
+			//A slave element (e.g. a contact of a coil) doesn't carry its own
+			//label, it's displayed from its master, so we use the master's
+			//label here too. The terminal stays the slave's own terminal.
+		Element *label_element = far_element;
+		if (far_element->linkType() == Element::Slave &&
+			!far_element->linkedElements().isEmpty())
+			label_element = far_element->linkedElements().first();
+
+		return {label_element->actualLabel(), far_terminal->name()};
 	}
 
 	return {QString(), QString()};
