@@ -93,6 +93,10 @@ namespace QETInformation
 	static QString COND_FORMULA              = "formula";
 	static QString COND_TEXT                 = "text";
 
+	/** Default information related to the real target of a folio report **/
+	static QString REPORT_TARGET_LABEL       = "target_label";
+	static QString REPORT_TARGET_TERMINAL    = "target_terminal";
+
 	/** Default information related to diagram **/
 	static QString DIA_AUTHOR             = "author";
 	static QString DIA_DATE               = "date";

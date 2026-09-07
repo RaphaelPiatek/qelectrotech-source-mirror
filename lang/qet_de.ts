@@ -9364,6 +9364,16 @@ Möchten Sie sie ersetzen?</translation>
         <translation>Leiterquerschnitt</translation>
     </message>
     <message>
+        <location filename="../sources/qetinformation.cpp" line="275"/>
+        <source>Label de la cible</source>
+        <translation>BMK des Ziels</translation>
+    </message>
+    <message>
+        <location filename="../sources/qetinformation.cpp" line="276"/>
+        <source>Borne de la cible</source>
+        <translation>Anschluss des Ziels</translation>
+    </message>
+    <message>
         <location filename="../sources/qetinformation.cpp" line="272"/>
         <source>Formule du texte</source>
         <translation>Textformel</translation>
