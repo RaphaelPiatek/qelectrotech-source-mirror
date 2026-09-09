@@ -141,8 +141,8 @@ class DynamicElementTextItem : public DiagramTextItem
 		void conductorWasRemoved(Conductor *conductor);
 		void setPotentialConductor();
 		void conductorPropertiesChanged();
-		QString reportReplacedCompositeText() const;
-		QPair<QString, QString> reportTargetInfo() const;
+		QString reportReplacedCompositeText();
+		QPair<QString, QString> reportTargetInfo();
 		void zoomToLinkedElement();
 		void parentElementRotationChanged();
 		void thisRotationChanged();
@@ -151,8 +151,10 @@ class DynamicElementTextItem : public DiagramTextItem
 		QPointer <Element>
 		m_parent_element,
 		m_master_element,
-		m_other_report;
+		m_other_report,
+		m_target_label_element;
 		QPointer <Conductor> m_watched_conductor;
+		QMetaObject::Connection m_target_label_con;
 		QString
 		m_text,
 		m_info_name,

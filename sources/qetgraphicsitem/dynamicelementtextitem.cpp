@@ -1238,7 +1238,7 @@ void DynamicElementTextItem::conductorPropertiesChanged()
 	@return the composite text with the variable replaced by the real value.
 	If the parent element of this text is not a folio report, return a default QString.
 */
-QString DynamicElementTextItem::reportReplacedCompositeText() const
+QString DynamicElementTextItem::reportReplacedCompositeText()
 {
 	QString string;
 
@@ -1306,56 +1306,76 @@ QString DynamicElementTextItem::reportReplacedCompositeText() const
 	@return a pair holding the label (BMK) and the terminal name (Anschluss)
 	of the real target, or two empty strings if no target can be resolved.
 */
-QPair<QString, QString> DynamicElementTextItem::reportTargetInfo() const
+QPair<QString, QString> DynamicElementTextItem::reportTargetInfo()
 {
-	if (m_other_report.isNull())
-		return {QString(), QString()};
+	Element *label_element = nullptr;
+	QString terminal_name;
 
-	QSet<const Element *> visited;
-	if (m_parent_element)
-		visited.insert(m_parent_element.data());
-
-	Element *current = m_other_report.data();
-
-	while (current && !visited.contains(current))
+	if (!m_other_report.isNull())
 	{
-		visited.insert(current);
+		QSet<const Element *> visited;
+		if (m_parent_element)
+			visited.insert(m_parent_element.data());
 
-		if (current->terminals().isEmpty())
-			return {QString(), QString()};
+		Element *current = m_other_report.data();
 
-		Terminal *from_terminal = current->terminals().first();
-		if (from_terminal->conductors().isEmpty())
-			return {QString(), QString()};
-
-		Conductor *cndr = from_terminal->conductors().first();
-		Terminal *far_terminal = (cndr->terminal1 == from_terminal) ? cndr->terminal2 : cndr->terminal1;
-		if (!far_terminal || !far_terminal->parentElement())
-			return {QString(), QString()};
-
-		Element *far_element = far_terminal->parentElement();
-
-			//The wire continues to another folio report, follow it there
-		if (far_element->linkType() & Element::AllReport)
+		while (current && !visited.contains(current))
 		{
-			if (far_element->linkedElements().isEmpty())
-				return {QString(), QString()};
-			current = far_element->linkedElements().first();
-			continue;
+			visited.insert(current);
+
+			if (current->terminals().isEmpty())
+				break;
+
+			Terminal *from_terminal = current->terminals().first();
+			if (from_terminal->conductors().isEmpty())
+				break;
+
+			Conductor *cndr = from_terminal->conductors().first();
+			Terminal *far_terminal = (cndr->terminal1 == from_terminal) ? cndr->terminal2 : cndr->terminal1;
+			if (!far_terminal || !far_terminal->parentElement())
+				break;
+
+			Element *far_element = far_terminal->parentElement();
+
+				//The wire continues to another folio report, follow it there
+			if (far_element->linkType() & Element::AllReport)
+			{
+				if (far_element->linkedElements().isEmpty())
+					break;
+				current = far_element->linkedElements().first();
+				continue;
+			}
+
+			terminal_name = far_terminal->name();
+
+				//A slave element (e.g. a contact of a coil) doesn't carry its own
+				//label, it's displayed from its master, so we use the master's
+				//label here too. The terminal stays the slave's own terminal.
+			label_element = far_element;
+			if (far_element->linkType() == Element::Slave &&
+				!far_element->linkedElements().isEmpty())
+				label_element = far_element->linkedElements().first();
+
+			break;
 		}
-
-			//A slave element (e.g. a contact of a coil) doesn't carry its own
-			//label, it's displayed from its master, so we use the master's
-			//label here too. The terminal stays the slave's own terminal.
-		Element *label_element = far_element;
-		if (far_element->linkType() == Element::Slave &&
-			!far_element->linkedElements().isEmpty())
-			label_element = far_element->linkedElements().first();
-
-		return {label_element->actualLabel(), far_terminal->name()};
 	}
 
-	return {QString(), QString()};
+		//Keep a live connection to the element whose label (BMK) is used here,
+		//so a change of that label refreshes the folio report text immediately.
+	if (m_target_label_element.data() != label_element)
+	{
+		if (m_target_label_con)
+			disconnect(m_target_label_con);
+
+		m_target_label_element = label_element;
+
+		if (label_element)
+			m_target_label_con = connect(label_element, &Element::elementInfoChange, this, &DynamicElementTextItem::conductorPropertiesChanged);
+		else
+			m_target_label_con = QMetaObject::Connection();
+	}
+
+	return {label_element ? label_element->actualLabel() : QString(), terminal_name};
 }
 
 /**
