@@ -308,6 +308,47 @@ QVector<KlemmplanExporter::Row> KlemmplanExporter::buildRows(const TerminalStrip
 }
 
 // ============================================================================
+// Cable / single wire key helpers
+// ============================================================================
+
+/**
+ * @brief KlemmplanExporter::effectiveCableKey
+ * A named cable is grouped/identified by its own name, as before.
+ * A conductor with no cable name (a loose single wire) has no natural
+ * identity of its own, so it's grouped by its color + cross-section instead:
+ * two single wires of a different color and/or section are two different
+ * wire types and must appear as separate entries in the inventory table.
+ * @return a stable grouping key, or an empty string if there is nothing at
+ * all to group on (no cable name, no color, no section).
+ */
+QString KlemmplanExporter::effectiveCableKey(const QString &cable,
+                                              const QString &color,
+                                              const QString &section)
+{
+	if (!cable.isEmpty())
+		return cable;
+	if (color.isEmpty() && section.isEmpty())
+		return QString();
+		// Prefix unlikely to collide with a real cable name, so each distinct
+		// color/section combination of single wires gets its own key.
+	return QStringLiteral("\x01single\x01%1\x01%2").arg(color, section);
+}
+
+/**
+ * @brief KlemmplanExporter::cableDisplayName
+ * @return the text to show in the "Type" column: the cable name itself, or
+ * "Single wire" (optionally with its color) when there is none.
+ */
+QString KlemmplanExporter::cableDisplayName(const QString &cable, const QString &color)
+{
+	if (!cable.isEmpty())
+		return cable;
+	if (color.isEmpty())
+		return QStringLiteral("Single wire");
+	return QStringLiteral("Single wire %1").arg(color);
+}
+
+// ============================================================================
 // Cable map builder
 // ============================================================================
 
@@ -315,14 +356,15 @@ QMap<QString,int> KlemmplanExporter::buildCableMap(const QVector<Row> &rows)
 {
 	QVector<QString> cableOrder;
 	QMap<QString, bool> seen;
-	auto process = [&](const QString &name) {
-		if (name.isEmpty() || seen.contains(name)) return;
-		seen[name] = true;
-		cableOrder.append(name);
+	auto process = [&](const QString &cable, const QString &color, const QString &section) {
+		const QString key = effectiveCableKey(cable, color, section);
+		if (key.isEmpty() || seen.contains(key)) return;
+		seen[key] = true;
+		cableOrder.append(key);
 	};
 	for (const auto &row : rows) {
-		process(row.left_cable);
-		process(row.right_cable);
+		process(row.left_cable,  row.left_color,  row.left_section);
+		process(row.right_cable, row.right_color, row.right_section);
 	}
 	QMap<QString,int> result;
 	for (int i = 0; i < cableOrder.size(); ++i)
@@ -590,14 +632,21 @@ void KlemmplanExporter::drawCableInventory(QDomDocument            &doc,
                                             int page_num,
                                             int total_pages)
 {
-	// Build per-cable info from all rows on this page (section + colors)
-	struct CableInfo { QString section; QSet<QString> colors; };
+	// Build per-cable (or per single-wire-type) info from all rows on this
+	// page: display name, section, colors seen, and how many wires of that
+	// exact key (single wires are keyed by color + section) were used.
+	struct CableInfo { QString display; QString section; QSet<QString> colors; int count = 0; bool is_single_wire = false; };
 	QMap<QString, CableInfo> cableMap;
 	for (const auto &row : rows) {
-		auto process = [&](const QString &name, const QString &section, const QString &color) {
-			if (name.isEmpty()) return;
-			if (section.isEmpty() == false) cableMap[name].section = section;
-			if (!color.isEmpty()) cableMap[name].colors.insert(color);
+		auto process = [&](const QString &cable, const QString &section, const QString &color) {
+			const QString key = effectiveCableKey(cable, color, section);
+			if (key.isEmpty()) return;
+			CableInfo &info = cableMap[key];
+			info.is_single_wire = cable.isEmpty();
+			if (info.display.isEmpty()) info.display = cableDisplayName(cable, color);
+			if (!section.isEmpty()) info.section = section;
+			if (!color.isEmpty()) info.colors.insert(color);
+			++info.count;
 		};
 		process(row.left_cable,  row.left_section,  row.left_color);
 		process(row.right_cable, row.right_section, row.right_color);
@@ -605,21 +654,28 @@ void KlemmplanExporter::drawCableInventory(QDomDocument            &doc,
 
 	// Draw cable legend (up to 7 entries, using global IDs)
 	// Show cables in global ID order, capped at 7
-	QVector<QPair<int,QString>> entries; // (id, name)
+	QVector<QPair<int,QString>> entries; // (id, key)
 	for (auto it = cable_to_id.begin(); it != cable_to_id.end(); ++it)
 		if (it.value() <= 7)
 			entries.append({it.value(), it.key()});
 	std::sort(entries.begin(), entries.end());
 
 	for (const auto &entry : entries) {
-		const int     id    = entry.first;
-		const QString &name = entry.second;
-		const CableInfo &info = cableMap.value(name);
+		const int     id  = entry.first;
+		const QString &key = entry.second;
+		const CableInfo &info = cableMap.value(key);
+			// Single wires are grouped one-per-color/section, so their
+			// "number of wires" is simply how many were counted for that
+			// exact key — the name-parsing heuristic below is for named
+			// multi-core cables only.
+		const QString wireCount = info.is_single_wire
+				? QString::number(info.count)
+				: parseWireCount(info.display, info.colors);
 		const int yInv = 30 + id * 20 - 10;
 		addText(doc, desc,   5, yInv + 10, QString::number(id), 9, true);
-		addText(doc, desc,  20, yInv + 10, name);
+		addText(doc, desc,  20, yInv + 10, info.display);
 		addText(doc, desc, 220, yInv + 10, info.section);
-		addText(doc, desc, 350, yInv + 10, parseWireCount(name, info.colors));
+		addText(doc, desc, 350, yInv + 10, wireCount);
 	}
 
 	for (int i = 1; i <= 7; ++i) {
@@ -684,10 +740,13 @@ void KlemmplanExporter::drawDataRows(QDomDocument            &doc,
 		if (!row.left_pin.isEmpty())
 			addText(doc, desc, 530, textY, QStringLiteral(":") + row.left_pin);
 
-		if (!row.left_cable.isEmpty()) {
-			const int lid = cableToId.value(row.left_cable, 0);
-			if (lid >= 1 && lid <= 7)
-				addText(doc, desc, 80 + (lid-1)*30 + 5, textY, row.left_color, 7);
+		{
+			const QString leftKey = effectiveCableKey(row.left_cable, row.left_color, row.left_section);
+			if (!leftKey.isEmpty()) {
+				const int lid = cableToId.value(leftKey, 0);
+				if (lid >= 1 && lid <= 7)
+					addText(doc, desc, 80 + (lid-1)*30 + 5, textY, row.left_color, 7);
+			}
 		}
 
 		if (!row.right_plant.isEmpty())
@@ -699,10 +758,13 @@ void KlemmplanExporter::drawDataRows(QDomDocument            &doc,
 		if (!row.right_pin.isEmpty())
 			addText(doc, desc, 1220, textY, QStringLiteral(":") + row.right_pin);
 
-		if (!row.right_cable.isEmpty()) {
-			const int rid = cableToId.value(row.right_cable, 0);
-			if (rid >= 1 && rid <= 7)
-				addText(doc, desc, 1270 + (rid-1)*30 + 5, textY, row.right_color, 7);
+		{
+			const QString rightKey = effectiveCableKey(row.right_cable, row.right_color, row.right_section);
+			if (!rightKey.isEmpty()) {
+				const int rid = cableToId.value(rightKey, 0);
+				if (rid >= 1 && rid <= 7)
+					addText(doc, desc, 1270 + (rid-1)*30 + 5, textY, row.right_color, 7);
+			}
 		}
 
 		if (!row.function_str.isEmpty())

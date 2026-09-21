@@ -114,6 +114,17 @@ private:
 	static QString uid            ();
 	static QString parseWireCount (const QString &name,
 	                                const QSet<QString> &colors);
+
+	// ── cable / single wire grouping ─────────────────────────────────────────
+	// A conductor with no "cable" name is a loose single wire (Einzelleiter).
+	// Such wires still need to appear in the "Cables or single wires used"
+	// table, grouped as distinct entries by color + cross-section (two wires
+	// of different color and/or section are two different wire types).
+	static QString effectiveCableKey (const QString &cable,
+	                                   const QString &color,
+	                                   const QString &section);
+	static QString cableDisplayName  (const QString &cable,
+	                                   const QString &color);
 };
 
 #endif // KLEMMPLANEXPORTER_H
